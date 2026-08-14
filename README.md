@@ -4,6 +4,9 @@
 
 > Shrink-wrap your Zsh prompt during terminal resize.
 
+> [!WARNING]
+> This project is still experimental. Use with caution for now.
+
 Many terminals reflow visible text before Zsh handles `SIGWINCH`. Zsh can then
 redraw its prompt from the wrong screen position, leaving duplicated or damaged
 prompt lines. zshrinkwrap mitigates this by temporarily:
