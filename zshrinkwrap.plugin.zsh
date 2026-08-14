@@ -18,8 +18,11 @@ typeset -g ZSHRINKWRAP_RESTORE_DELAY=${ZSHRINKWRAP_RESTORE_DELAY-'0.20'}
 zmodload zsh/datetime
 
 typeset -gi _zshrinkwrap_active=0
+typeset -gi _zshrinkwrap_pushed=0
+typeset -gi _zshrinkwrap_hard=0
 typeset -gi _zshrinkwrap_timer_fd=-1
-typeset -gi _zshrinkwrap_saved_single_line=0
+typeset -gi _zshrinkwrap_last_cols=${COLUMNS:-80}
+typeset -gi _zshrinkwrap_saved_cursor=0
 typeset -gF _zshrinkwrap_deadline=0.0
 typeset -g _zshrinkwrap_saved_prompt
 typeset -g _zshrinkwrap_saved_rprompt
@@ -41,21 +44,25 @@ _zshrinkwrap_cancel_timer() {
 _zshrinkwrap_restore() {
   emulate -L zsh
   _zshrinkwrap_cancel_timer
+  _zshrinkwrap_last_cols=${COLUMNS:-80}
   (( _zshrinkwrap_active )) || return 0
 
   PROMPT=$_zshrinkwrap_saved_prompt
   RPROMPT=$_zshrinkwrap_saved_rprompt
-  unsetopt localoptions
-  if (( _zshrinkwrap_saved_single_line )); then
-    setopt singlelinezle
-  else
-    unsetopt singlelinezle
-  fi
   _zshrinkwrap_active=0
+
+  # Only reclaim the stashed edit line while still at the same prompt.
+  # After accept-line zsh pops the buffer stack itself at the next prompt.
+  if (( _zshrinkwrap_pushed )) && zle 2>/dev/null; then
+    zle get-line
+    (( CURSOR = _zshrinkwrap_saved_cursor < $#BUFFER ?
+                _zshrinkwrap_saved_cursor : $#BUFFER ))
+    _zshrinkwrap_pushed=0
+  fi
 }
 
 # Estimate physical rows between the top of the prompt display and the
-# cursor after the terminal rewraps the display to `cols` columns.
+# cursor when the display is wrapped to `cols` columns.
 _zshrinkwrap_rows_above() {
   emulate -L zsh
   local prompt=$1
@@ -72,25 +79,41 @@ _zshrinkwrap_rows_above() {
   typeset -g REPLY=$rows
 }
 
-# Clear every row the reflowed display may occupy, leaving the cursor at
-# the start of the region so the next redraw lands there. Assumes the
-# terminal rewraps soft-wrapped lines to the new width, which modern
-# terminals (iTerm2, VS Code, kitty, VTE, WezTerm) do.
-_zshrinkwrap_clear_display() {
+# Runs inside TRAPWINCH. Before the trap, zsh redraws the display at the
+# new width, but it climbs to the old top using a row offset computed at
+# the old width, while the terminal's reflow moved the cursor to the new
+# width's offset. The drawing therefore lands delta rows off. Zsh then
+# parks the cursor on a fresh row below its drawing, and the end-of-trap
+# refresh climbs that same parked depth and clears with ED from there. So
+# a single cursor-up of delta rows makes that refresh land on the true
+# top, wiping both the stale rows and the displaced drawing.
+_zshrinkwrap_adjust() {
   emulate -L zsh
-  local -i rows=0
+  local -i r_old r_new delta
 
-  zle -I 2>/dev/null
-  # Single-line editing draws one row with the cursor on it, so cursor
-  # offset math would walk upward into unrelated output.
-  if [[ ! -o singlelinezle ]]; then
+  if (( ${ZSHRINKWRAP_REFLOW:-1} )); then
+    _zshrinkwrap_rows_above "$PROMPT" $_zshrinkwrap_last_cols ${CURSOR:-0}
+    r_old=$REPLY
     _zshrinkwrap_rows_above "$PROMPT" ${COLUMNS:-80} ${CURSOR:-0}
-    rows=$REPLY
-    (( rows > LINES - 1 )) && rows=$(( LINES - 1 ))
+    r_new=$REPLY
+    (( delta = r_new - r_old ))
+    (( delta > LINES - 1 )) && delta=$(( LINES - 1 ))
+    (( delta > 0 )) && print -rn -- $'\e['${delta}'A'
   fi
 
-  (( rows > 0 )) && print -rn -- $'\e['${rows}'A'
-  print -rn -- $'\r\e[0J'
+  if (( ! _zshrinkwrap_active )); then
+    _zshrinkwrap_saved_prompt=$PROMPT
+    _zshrinkwrap_saved_rprompt=$RPROMPT
+    _zshrinkwrap_saved_cursor=${CURSOR:-0}
+    _zshrinkwrap_active=1
+
+    if [[ -n $BUFFER ]]; then
+      zle push-line && _zshrinkwrap_pushed=1
+    fi
+    PROMPT=$ZSHRINKWRAP_SYMBOL
+    RPROMPT=''
+  fi
+  zle reset-prompt
 }
 
 _zshrinkwrap_timer_ready() {
@@ -109,7 +132,6 @@ _zshrinkwrap_timer_ready() {
   fi
 
   (( _zshrinkwrap_active )) || return 0
-  _zshrinkwrap_clear_display
   _zshrinkwrap_restore
   zle reset-prompt
 }
@@ -123,26 +145,6 @@ _zshrinkwrap_start_timer() {
   zle -F $_zshrinkwrap_timer_fd _zshrinkwrap_timer_ready
 }
 
-_zshrinkwrap_begin() {
-  emulate -L zsh
-
-  if (( ! _zshrinkwrap_active )); then
-    _zshrinkwrap_saved_prompt=$PROMPT
-    _zshrinkwrap_saved_rprompt=$RPROMPT
-    if [[ -o singlelinezle ]]; then
-      _zshrinkwrap_saved_single_line=1
-    else
-      _zshrinkwrap_saved_single_line=0
-    fi
-    _zshrinkwrap_active=1
-  fi
-
-  PROMPT=$ZSHRINKWRAP_SYMBOL
-  RPROMPT=''
-  unsetopt localoptions
-  setopt singlelinezle
-}
-
 TRAPWINCH() {
   emulate -L zsh
   local trap_status=0
@@ -152,13 +154,12 @@ TRAPWINCH() {
   fi
 
   if zle 2>/dev/null; then
-    _zshrinkwrap_clear_display
-    _zshrinkwrap_begin
-    zle reset-prompt
+    _zshrinkwrap_adjust
     (( _zshrinkwrap_deadline = EPOCHREALTIME + ZSHRINKWRAP_RESTORE_DELAY ))
     _zshrinkwrap_start_timer
   fi
 
+  _zshrinkwrap_last_cols=${COLUMNS:-80}
   return $trap_status
 }
 
