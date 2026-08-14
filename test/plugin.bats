@@ -30,6 +30,16 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
+@test "clears the current terminal row" {
+  run zsh -fc '
+    source "$PLUGIN_PATH"
+    _zsh_resize_clear_line | od -An -tx1 | tr -d " \n"
+  '
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "0d1b5b324b" ]
+}
+
 @test "preserves an existing WINCH trap" {
   run zsh -fc '
     TRAPWINCH() { return 23 }

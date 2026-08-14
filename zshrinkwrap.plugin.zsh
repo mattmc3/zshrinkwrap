@@ -76,6 +76,10 @@ _zsh_resize_start_timer() {
   zle -F $_zsh_resize_timer_fd _zsh_resize_timer_ready
 }
 
+_zsh_resize_clear_line() {
+  print -rn -- $'\r\e[2K'
+}
+
 _zsh_resize_begin() {
   emulate -L zsh
 
@@ -105,6 +109,7 @@ TRAPWINCH() {
   fi
 
   if zle 2>/dev/null; then
+    _zsh_resize_clear_line
     _zsh_resize_begin
     zle reset-prompt
     (( _zsh_resize_deadline = EPOCHREALTIME + ZSHINKWRAP_RESTORE_DELAY ))
