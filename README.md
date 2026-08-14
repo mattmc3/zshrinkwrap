@@ -1,6 +1,6 @@
 # zshrinkwrap
 
-Shrink-wrap your Zsh prompt during terminal resize.
+> Shrink-wrap your Zsh prompt during terminal resize.
 
 Many terminals reflow visible text before Zsh handles `SIGWINCH`. Zsh can then
 redraw its prompt from the wrong screen position, leaving duplicated or damaged
