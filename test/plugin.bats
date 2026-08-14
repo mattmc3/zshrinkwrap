@@ -7,8 +7,8 @@ setup() {
 @test "uses responsive defaults" {
   run zsh -fc '
     source "$PLUGIN_PATH"
-    [[ $ZSHINKWRAP_SYMBOL == "%F{magenta}%#%f " &&
-       $ZSHINKWRAP_RESTORE_DELAY == 0.20 ]]
+    [[ $ZSHRINKWRAP_SYMBOL == "%F{magenta}%#%f " &&
+       $ZSHRINKWRAP_RESTORE_DELAY == 0.20 ]]
   '
 
   [ "$status" -eq 0 ]
@@ -16,10 +16,10 @@ setup() {
 
 @test "supports prompt color escapes in symbol" {
   run zsh -fc '
-    ZSHINKWRAP_SYMBOL="%F{magenta}❯%f "
+    ZSHRINKWRAP_SYMBOL="%F{magenta}❯%f "
     source "$PLUGIN_PATH"
 
-    _zsh_resize_begin
+    _zshrinkwrap_begin
 
     [[ $PROMPT == "%F{magenta}❯%f " ]]
     expanded_prompt=${(%)PROMPT}
@@ -30,34 +30,90 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
-@test "clears the current terminal row" {
+@test "counts zero rows for a short unwrapped line" {
   run zsh -fc '
     source "$PLUGIN_PATH"
-    _zsh_resize_clear_line | od -An -tx1 | tr -d " \n"
+    _zshrinkwrap_rows_above "abc> " 80 10
+    [[ $REPLY == 0 ]]
   '
 
   [ "$status" -eq 0 ]
-  [ "$output" = "0d1b5b324b" ]
 }
 
-@test "clears reflowed rows in VS Code" {
-  run env TERM_PROGRAM=vscode zsh -fc '
+@test "counts rows when the edit line wraps" {
+  run zsh -fc '
     source "$PLUGIN_PATH"
-    _zsh_resize_clear_line | od -An -tx1 | tr -d " \n"
+    _zshrinkwrap_rows_above "abc> " 10 20
+    [[ $REPLY == 2 ]]
   '
 
   [ "$status" -eq 0 ]
-  [ "$output" = "1b380d1b5b304a" ]
 }
 
-@test "marks prompt origin in VS Code" {
-  run env TERM_PROGRAM=vscode zsh -fc '
+@test "counts extra prompt lines and their wraps" {
+  run zsh -fc '
     source "$PLUGIN_PATH"
-    _zsh_resize_mark_prompt | od -An -tx1 | tr -d " \n"
+    _zshrinkwrap_rows_above "123456789012345"$'\n'"abc> " 10 0
+    [[ $REPLY == 2 ]]
   '
 
   [ "$status" -eq 0 ]
-  [ "$output" = "1b37" ]
+}
+
+@test "ignores zero-width prompt escapes when measuring" {
+  run zsh -fc '
+    source "$PLUGIN_PATH"
+    _zshrinkwrap_rows_above "%F{magenta}12345%f" 10 8
+    [[ $REPLY == 1 ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "clears a single row when nothing wraps" {
+  run zsh -fc '
+    source "$PLUGIN_PATH"
+    COLUMNS=80; LINES=24; CURSOR=0; PROMPT="abc> "
+    _zshrinkwrap_clear_display | od -An -tx1 | tr -d " \n"
+  '
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "0d1b5b304a" ]
+}
+
+@test "clears the rewrapped display region" {
+  run zsh -fc '
+    source "$PLUGIN_PATH"
+    COLUMNS=10; LINES=24; CURSOR=20; PROMPT="abc> "
+    _zshrinkwrap_clear_display | od -An -tx1 | tr -d " \n"
+  '
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "1b5b32410d1b5b304a" ]
+}
+
+@test "caps the clear region by the previous width during resize" {
+  run zsh -fc '
+    source "$PLUGIN_PATH"
+    COLUMNS=10; LINES=24; CURSOR=200; PROMPT="> "
+    _zshrinkwrap_active=1
+    _zshrinkwrap_last_cols=20
+    _zshrinkwrap_clear_display | od -An -tx1 | tr -d " \n"
+  '
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "1b5b31410d1b5b304a" ]
+}
+
+@test "caps the clear region at the screen height" {
+  run zsh -fc '
+    source "$PLUGIN_PATH"
+    COLUMNS=10; LINES=3; CURSOR=200; PROMPT="abc> "
+    _zshrinkwrap_clear_display | od -An -tx1 | tr -d " \n"
+  '
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "1b5b32410d1b5b304a" ]
 }
 
 @test "preserves an existing WINCH trap" {
@@ -90,7 +146,7 @@ setup() {
     PROMPT="wide prompt > "
     RPROMPT="right prompt"
 
-    _zsh_resize_begin
+    _zshrinkwrap_begin
 
     [[ $PROMPT == "%F{magenta}%#%f " &&
        -z $RPROMPT &&
@@ -107,8 +163,8 @@ setup() {
     PROMPT="wide prompt > "
     RPROMPT="right prompt"
 
-    _zsh_resize_begin
-    _zsh_resize_restore
+    _zshrinkwrap_begin
+    _zshrinkwrap_restore
 
     [[ $PROMPT == "wide prompt > " ]]
     [[ $RPROMPT == "right prompt" ]]
@@ -123,8 +179,8 @@ setup() {
     setopt singlelinezle
     source "$PLUGIN_PATH"
 
-    _zsh_resize_begin
-    _zsh_resize_restore
+    _zshrinkwrap_begin
+    _zshrinkwrap_restore
 
     [[ -o singlelinezle ]]
   '
@@ -138,9 +194,9 @@ setup() {
     PROMPT="wide prompt > "
     RPROMPT="right prompt"
 
-    _zsh_resize_begin
-    _zsh_resize_begin
-    _zsh_resize_restore
+    _zshrinkwrap_begin
+    _zshrinkwrap_begin
+    _zshrinkwrap_restore
 
     [[ $PROMPT == "wide prompt > " ]]
     [[ $RPROMPT == "right prompt" ]]
@@ -153,14 +209,46 @@ setup() {
   run zsh -fc '
     source "$PLUGIN_PATH"
     integer timer_cancellations=0
-    _zsh_resize_cancel_timer() { (( ++timer_cancellations )) }
+    _zshrinkwrap_cancel_timer() { (( ++timer_cancellations )) }
     zle() { return 0 }
 
-    _zsh_resize_start_timer
-    _zsh_resize_start_timer
+    _zshrinkwrap_start_timer
+    _zshrinkwrap_start_timer
 
-    exec {_zsh_resize_timer_fd}<&-
+    exec {_zshrinkwrap_timer_fd}<&-
     [[ $timer_cancellations == 0 ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "restore cancels a pending timer" {
+  run zsh -fc '
+    source "$PLUGIN_PATH"
+    zle() { return 0 }
+
+    _zshrinkwrap_begin
+    _zshrinkwrap_start_timer 5
+    [[ $_zshrinkwrap_timer_fd -ge 0 ]]
+
+    _zshrinkwrap_restore
+    [[ $_zshrinkwrap_timer_fd -eq -1 ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "stale timer does not clear or redraw" {
+  run zsh -fc '
+    source "$PLUGIN_PATH"
+    zle() { return 0 }
+
+    exec {fd}< /dev/null
+    _zshrinkwrap_timer_fd=$fd
+    _zshrinkwrap_deadline=0
+
+    out=$(_zshrinkwrap_timer_ready $fd)
+    [[ -z $out ]]
   '
 
   [ "$status" -eq 0 ]

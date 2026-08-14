@@ -19,31 +19,22 @@ After resizing settles, zshrinkwrap restores the original prompts and editor
 mode. This reduces artifacts but cannot prevent terminal reflow that happens
 before Zsh receives `SIGWINCH`.
 
-## Terminal compatibility
+## How cleanup works
 
-Ghostty, Apple Terminal, WezTerm, and iTerm2 use the default single-row cleanup.
-VS Code needs stronger handling because xterm.js can move prompt fragments onto
-other rows before Zsh receives `SIGWINCH`.
+When the prompt line is longer than the new terminal width, the terminal
+rewraps it across several physical rows before Zsh receives `SIGWINCH`.
+Clearing only the cursor row leaves fragments of the old prompt above it.
 
-For terminals like VS Code, zshrinkwrap saves the cursor position before drawing
-each prompt. During resize it returns to that saved prompt origin, clears the
-reflowed prompt area, and asks ZLE to redraw from its preserved buffer.
+zshrinkwrap instead estimates how many rows the rewrapped display occupies,
+using the visible prompt width, the cursor offset in the edit buffer, and the
+new terminal width. It moves the cursor to the top of that region, clears to
+the end of the screen, and redraws.
 
-This cursor-marker method is intentionally limited to VS Code. It is less safe
-as a generic fallback because:
-
-- some terminals reflow text without reflowing the saved cursor position;
-- terminals provide one shared saved-cursor slot that another program can
-  overwrite;
-- output from a later `precmd` hook can make the saved origin stale; and
-- tmux or screen can change cursor and resize behavior between Zsh and the
-  outer terminal.
-
-Restoring a stale cursor before clearing could erase unrelated visible output.
-New terminals should use this path only after manual testing confirms that their
-saved cursor follows text during resize. This is the same compatibility
-requirement described by the Powerlevel10k
-[Zsh patch discussion](https://github.com/romkatv/powerlevel10k#zsh-patch).
+This assumes the terminal rewraps soft-wrapped lines to the new width, which
+Ghostty, Apple Terminal, WezTerm, iTerm2, kitty, VTE terminals, and VS Code
+all do. Terminals that truncate instead of rewrap (plain xterm) may see the
+clear region land slightly off. Prompts that occupy exactly the full terminal
+width can also throw the estimate off by one row.
 
 ## Requirements
 
@@ -63,13 +54,13 @@ source /path/to/zshrinkwrap/zshrinkwrap.plugin.zsh
 Set either option before sourcing the plugin:
 
 ```zsh
-ZSHINKWRAP_SYMBOL='%F{magenta}❯%f '
-ZSHINKWRAP_RESTORE_DELAY=0.20
+ZSHRINKWRAP_SYMBOL='%F{magenta}❯%f '
+ZSHRINKWRAP_RESTORE_DELAY=0.20
 ```
 
-`ZSHINKWRAP_SYMBOL` supports Zsh prompt escapes, including `%F{color}` and `%f`.
-It defaults to `%F{magenta}%#%f `. `ZSHINKWRAP_RESTORE_DELAY` defaults to `0.20`
-seconds.
+`ZSHRINKWRAP_SYMBOL` supports Zsh prompt escapes, including `%F{color}` and
+`%f`. It defaults to `%F{magenta}%#%f `. `ZSHRINKWRAP_RESTORE_DELAY` defaults
+to `0.20` seconds.
 
 ## Test
 
