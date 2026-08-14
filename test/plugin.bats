@@ -92,17 +92,16 @@ setup() {
   [ "$output" = "1b5b32410d1b5b304a" ]
 }
 
-@test "caps the clear region by the previous width during resize" {
+@test "clears only the current row during single-line editing" {
   run zsh -fc '
     source "$PLUGIN_PATH"
-    COLUMNS=10; LINES=24; CURSOR=200; PROMPT="> "
-    _zshrinkwrap_active=1
-    _zshrinkwrap_last_cols=20
+    setopt singlelinezle
+    COLUMNS=10; LINES=24; CURSOR=200; PROMPT="abc> "
     _zshrinkwrap_clear_display | od -An -tx1 | tr -d " \n"
   '
 
   [ "$status" -eq 0 ]
-  [ "$output" = "1b5b31410d1b5b304a" ]
+  [ "$output" = "0d1b5b304a" ]
 }
 
 @test "caps the clear region at the screen height" {

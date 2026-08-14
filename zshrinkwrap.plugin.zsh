@@ -20,7 +20,6 @@ zmodload zsh/datetime
 typeset -gi _zshrinkwrap_active=0
 typeset -gi _zshrinkwrap_timer_fd=-1
 typeset -gi _zshrinkwrap_saved_single_line=0
-typeset -gi _zshrinkwrap_last_cols=${COLUMNS:-80}
 typeset -gF _zshrinkwrap_deadline=0.0
 typeset -g _zshrinkwrap_saved_prompt
 typeset -g _zshrinkwrap_saved_rprompt
@@ -79,19 +78,16 @@ _zshrinkwrap_rows_above() {
 # terminals (iTerm2, VS Code, kitty, VTE, WezTerm) do.
 _zshrinkwrap_clear_display() {
   emulate -L zsh
-  local -i rows cap
+  local -i rows=0
 
   zle -I 2>/dev/null
-  _zshrinkwrap_rows_above "$PROMPT" ${COLUMNS:-80} ${CURSOR:-0}
-  rows=$REPLY
-
-  if (( _zshrinkwrap_active && COLUMNS > 0 )); then
-    # Single-line editing kept the display within the previous width, so
-    # the rewrapped region cannot span more rows than that width allows.
-    (( cap = (_zshrinkwrap_last_cols - 1) / COLUMNS ))
-    (( rows > cap )) && rows=cap
+  # Single-line editing draws one row with the cursor on it, so cursor
+  # offset math would walk upward into unrelated output.
+  if [[ ! -o singlelinezle ]]; then
+    _zshrinkwrap_rows_above "$PROMPT" ${COLUMNS:-80} ${CURSOR:-0}
+    rows=$REPLY
+    (( rows > LINES - 1 )) && rows=$(( LINES - 1 ))
   fi
-  (( rows > LINES - 1 )) && rows=$(( LINES - 1 ))
 
   (( rows > 0 )) && print -rn -- $'\e['${rows}'A'
   print -rn -- $'\r\e[0J'
@@ -159,7 +155,6 @@ TRAPWINCH() {
     _zshrinkwrap_clear_display
     _zshrinkwrap_begin
     zle reset-prompt
-    _zshrinkwrap_last_cols=${COLUMNS:-80}
     (( _zshrinkwrap_deadline = EPOCHREALTIME + ZSHRINKWRAP_RESTORE_DELAY ))
     _zshrinkwrap_start_timer
   fi
