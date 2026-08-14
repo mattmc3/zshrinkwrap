@@ -91,7 +91,18 @@ _zshrinkwrap_adjust() {
   emulate -L zsh
   local -i r_old r_new delta
 
-  if (( ${ZSHRINKWRAP_REFLOW:-1} )); then
+  if [[ $TERM_PROGRAM == vscode ]]; then
+    # xterm.js moves the saved cursor along with reflowed text, so DECRC
+    # returns to the prompt origin marked at precmd: an absolute anchor,
+    # immune to history lines above the prompt rewrapping. Wipe from the
+    # origin, then descend the parked depth so the end-of-trap refresh
+    # climbs back onto the origin.
+    local -i len=${#BUFFER} parked
+    _zshrinkwrap_rows_above "$PROMPT" ${COLUMNS:-80} $(( len > 0 ? len - 1 : 0 ))
+    parked=$(( REPLY + 1 ))
+    (( parked > LINES - 1 )) && parked=$(( LINES - 1 ))
+    print -rn -- $'\e8\r\e[0J\e['${parked}'B'
+  elif (( ${ZSHRINKWRAP_REFLOW:-1} )); then
     _zshrinkwrap_rows_above "$PROMPT" $_zshrinkwrap_last_cols ${CURSOR:-0}
     r_old=$REPLY
     _zshrinkwrap_rows_above "$PROMPT" ${COLUMNS:-80} ${CURSOR:-0}
@@ -163,6 +174,15 @@ TRAPWINCH() {
   return $trap_status
 }
 
+# Save the cursor at the prompt origin so DECRC can find it after reflow.
+# Registered last so other precmd output lands before the mark, but any
+# hook added later that prints will still make the saved origin stale.
+_zshrinkwrap_mark_origin() {
+  [[ $TERM_PROGRAM == vscode ]] && print -rn -- $'\e7'
+  return 0
+}
+
 autoload -Uz add-zsh-hook
 add-zsh-hook precmd _zshrinkwrap_restore
+add-zsh-hook precmd _zshrinkwrap_mark_origin
 # https://github.com/romkatv/powerlevel10k#horrific-mess-when-resizing-terminal-window
