@@ -63,6 +63,7 @@ _zsh_resize_timer_ready() {
     return 0
   fi
 
+  _zsh_resize_clear_line
   _zsh_resize_restore
   zle reset-prompt
 }
@@ -77,7 +78,19 @@ _zsh_resize_start_timer() {
 }
 
 _zsh_resize_clear_line() {
-  print -rn -- $'\r\e[2K'
+  emulate -L zsh
+  zle -I 2>/dev/null
+
+  if [[ $TERM_PROGRAM == vscode ]]; then
+    print -rn -- $'\e8\r\e[0J'
+  else
+    print -rn -- $'\r\e[2K'
+  fi
+}
+
+_zsh_resize_mark_prompt() {
+  emulate -L zsh
+  [[ $TERM_PROGRAM == vscode ]] && print -rn -- $'\e7'
 }
 
 _zsh_resize_begin() {
@@ -121,4 +134,5 @@ TRAPWINCH() {
 
 autoload -Uz add-zsh-hook
 add-zsh-hook precmd _zsh_resize_restore
+add-zsh-hook precmd _zsh_resize_mark_prompt
 # https://github.com/romkatv/powerlevel10k#horrific-mess-when-resizing-terminal-window

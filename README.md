@@ -14,6 +14,32 @@ After resizing settles, zshrinkwrap restores the original prompts and editor
 mode. This reduces artifacts but cannot prevent terminal reflow that happens
 before Zsh receives `SIGWINCH`.
 
+## Terminal compatibility
+
+Ghostty, Apple Terminal, WezTerm, and iTerm2 use the default single-row cleanup.
+VS Code needs stronger handling because xterm.js can move prompt fragments onto
+other rows before Zsh receives `SIGWINCH`.
+
+For terminals like VS Code, zshrinkwrap saves the cursor position before drawing
+each prompt. During resize it returns to that saved prompt origin, clears the
+reflowed prompt area, and asks ZLE to redraw from its preserved buffer.
+
+This cursor-marker method is intentionally limited to VS Code. It is less safe
+as a generic fallback because:
+
+- some terminals reflow text without reflowing the saved cursor position;
+- terminals provide one shared saved-cursor slot that another program can
+  overwrite;
+- output from a later `precmd` hook can make the saved origin stale; and
+- tmux or screen can change cursor and resize behavior between Zsh and the
+  outer terminal.
+
+Restoring a stale cursor before clearing could erase unrelated visible output.
+New terminals should use this path only after manual testing confirms that their
+saved cursor follows text during resize. This is the same compatibility
+requirement described by the Powerlevel10k
+[Zsh patch discussion](https://github.com/romkatv/powerlevel10k#zsh-patch).
+
 ## Requirements
 
 - Zsh

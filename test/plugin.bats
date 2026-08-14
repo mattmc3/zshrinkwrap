@@ -40,6 +40,26 @@ setup() {
   [ "$output" = "0d1b5b324b" ]
 }
 
+@test "clears reflowed rows in VS Code" {
+  run env TERM_PROGRAM=vscode zsh -fc '
+    source "$PLUGIN_PATH"
+    _zsh_resize_clear_line | od -An -tx1 | tr -d " \n"
+  '
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "1b380d1b5b304a" ]
+}
+
+@test "marks prompt origin in VS Code" {
+  run env TERM_PROGRAM=vscode zsh -fc '
+    source "$PLUGIN_PATH"
+    _zsh_resize_mark_prompt | od -An -tx1 | tr -d " \n"
+  '
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "1b37" ]
+}
+
 @test "preserves an existing WINCH trap" {
   run zsh -fc '
     TRAPWINCH() { return 23 }
