@@ -7,7 +7,7 @@ if (( ${_zsh_resize_loaded:-0} )); then
 fi
 typeset -gi _zsh_resize_loaded=1
 
-typeset -g ZSHINKWRAP_SYMBOL=${ZSHINKWRAP_SYMBOL-'%# '}
+typeset -g ZSHINKWRAP_SYMBOL=${ZSHINKWRAP_SYMBOL-'%F{magenta}%#%f '}
 typeset -g ZSHINKWRAP_RESTORE_DELAY=${ZSHINKWRAP_RESTORE_DELAY-'0.20'}
 
 zmodload zsh/datetime

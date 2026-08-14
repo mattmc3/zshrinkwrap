@@ -63,7 +63,8 @@ ZSHINKWRAP_RESTORE_DELAY=0.20
 ```
 
 `ZSHINKWRAP_SYMBOL` supports Zsh prompt escapes, including `%F{color}` and `%f`.
-It defaults to `%# `. `ZSHINKWRAP_RESTORE_DELAY` defaults to `0.20` seconds.
+It defaults to `%F{magenta}%#%f `. `ZSHINKWRAP_RESTORE_DELAY` defaults to `0.20`
+seconds.
 
 ## Test
 

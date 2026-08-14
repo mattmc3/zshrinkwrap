@@ -7,8 +7,8 @@ setup() {
 @test "uses responsive defaults" {
   run zsh -fc '
     source "$PLUGIN_PATH"
-    [[ $ZSHINKWRAP_SYMBOL == "%# " ]]
-    [[ $ZSHINKWRAP_RESTORE_DELAY == 0.20 ]]
+    [[ $ZSHINKWRAP_SYMBOL == "%F{magenta}%#%f " &&
+       $ZSHINKWRAP_RESTORE_DELAY == 0.20 ]]
   '
 
   [ "$status" -eq 0 ]
@@ -92,9 +92,9 @@ setup() {
 
     _zsh_resize_begin
 
-    [[ $PROMPT == "%# " ]]
-    [[ -z $RPROMPT ]]
-    [[ -o singlelinezle ]]
+    [[ $PROMPT == "%F{magenta}%#%f " &&
+       -z $RPROMPT &&
+       -o singlelinezle ]]
   '
 
   [ "$status" -eq 0 ]
