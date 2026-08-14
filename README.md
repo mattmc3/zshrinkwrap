@@ -1,5 +1,7 @@
 # zshrinkwrap
 
+<img src="assets/zshrinkwrap.svg" alt="zshrinkwrap" height="100" align="right">
+
 > Shrink-wrap your Zsh prompt during terminal resize.
 
 Many terminals reflow visible text before Zsh handles `SIGWINCH`. Zsh can then
