@@ -51,16 +51,29 @@ source /path/to/zshrinkwrap/zshrinkwrap.plugin.zsh
 
 ## Configure
 
-Set either option before sourcing the plugin:
+Styles are read at resize time, so set them before or after sourcing the
+plugin:
 
 ```zsh
-ZSHRINKWRAP_SYMBOL='%F{magenta}❯%f '
-ZSHRINKWRAP_RESTORE_DELAY=0.20
+zstyle ':zshrinkwrap:resize' symbol '%F{magenta}❯%f '
+zstyle ':zshrinkwrap:resize' restore-delay 0.20
+zstyle ':zshrinkwrap:resize' shrink-lprompt false
+zstyle ':zshrinkwrap:resize' shrink-rprompt true
+zstyle ':zshrinkwrap:resize' reflow true
 ```
 
-`ZSHRINKWRAP_SYMBOL` supports Zsh prompt escapes, including `%F{color}` and
-`%f`. It defaults to `%F{magenta}%#%f `. `ZSHRINKWRAP_RESTORE_DELAY` defaults
-to `0.20` seconds.
+The `symbol` style supports Zsh prompt escapes, including `%F{color}` and
+`%f`. It defaults to `%F{magenta}%#%f `. The `restore-delay` style defaults to
+`0.20` seconds. Setting a style to an empty value falls back to its default.
+
+The `shrink-lprompt` and `shrink-rprompt` styles control which prompts shrink
+during resize. `shrink-lprompt` defaults to `false`; `shrink-rprompt` defaults
+to `true`.
+
+The `reflow` style compensates for the terminal rewrapping the prompt at the
+new width. It defaults to `true`. Set it to `false` in terminals that do not
+reflow existing lines on resize, or when the correction itself misplaces the
+prompt.
 
 ## Test
 

@@ -12,9 +12,6 @@ if (( ${_zshrinkwrap_loaded:-0} )); then
 fi
 typeset -gi _zshrinkwrap_loaded=1
 
-typeset -g ZSHRINKWRAP_SYMBOL=${ZSHRINKWRAP_SYMBOL-'%F{magenta}%#%f '}
-typeset -g ZSHRINKWRAP_RESTORE_DELAY=${ZSHRINKWRAP_RESTORE_DELAY-'0.20'}
-
 zmodload zsh/datetime
 
 typeset -gi _zshrinkwrap_active=0
@@ -30,6 +27,22 @@ typeset -g _zshrinkwrap_saved_rprompt
 if (( $+functions[TRAPWINCH] && ! $+functions[_zshrinkwrap_previous_trapwinch] )); then
   functions[_zshrinkwrap_previous_trapwinch]=$functions[TRAPWINCH]
 fi
+
+typeset -gA _zshrinkwrap_defaults=(
+  symbol        '%F{magenta}%#%f '
+  restore-delay '0.20'
+)
+
+# An empty style counts as unset, so a blank value cannot leave the
+# prompt or the sleep interval with nothing usable.
+_zshrinkwrap_style() {
+  emulate -L zsh
+  local value
+
+  zstyle -s ':zshrinkwrap:resize' $1 value
+  [[ -n $value ]] || value=${_zshrinkwrap_defaults[$1]}
+  typeset -g REPLY=$value
+}
 
 _zshrinkwrap_cancel_timer() {
   emulate -L zsh
@@ -102,7 +115,7 @@ _zshrinkwrap_adjust() {
     parked=$(( REPLY + 1 ))
     (( parked > LINES - 1 )) && parked=$(( LINES - 1 ))
     print -rn -- $'\e8\r\e[0J\e['${parked}'B'
-  elif (( ${ZSHRINKWRAP_REFLOW:-1} )); then
+  elif zstyle -T ':zshrinkwrap:resize' reflow; then
     _zshrinkwrap_rows_above "$PROMPT" $_zshrinkwrap_last_cols ${CURSOR:-0}
     r_old=$REPLY
     _zshrinkwrap_rows_above "$PROMPT" ${COLUMNS:-80} ${CURSOR:-0}
@@ -118,11 +131,14 @@ _zshrinkwrap_adjust() {
     _zshrinkwrap_saved_cursor=${CURSOR:-0}
     _zshrinkwrap_active=1
 
-    if [[ -n $BUFFER ]]; then
-      zle push-line && _zshrinkwrap_pushed=1
+    if zstyle -t ':zshrinkwrap:resize' shrink-lprompt; then
+      if [[ -n $BUFFER ]]; then
+        zle push-line && _zshrinkwrap_pushed=1
+      fi
+      _zshrinkwrap_style symbol
+      PROMPT=$REPLY
     fi
-    PROMPT=$ZSHRINKWRAP_SYMBOL
-    RPROMPT=''
+    zstyle -T ':zshrinkwrap:resize' shrink-rprompt && RPROMPT=''
   fi
   zle reset-prompt
 }
@@ -149,7 +165,12 @@ _zshrinkwrap_timer_ready() {
 
 _zshrinkwrap_start_timer() {
   emulate -L zsh
-  local delay=${1:-$ZSHRINKWRAP_RESTORE_DELAY}
+  local delay=$1
+
+  if [[ -z $delay ]]; then
+    _zshrinkwrap_style restore-delay
+    delay=$REPLY
+  fi
 
   (( _zshrinkwrap_timer_fd >= 0 )) && return 0
   exec {_zshrinkwrap_timer_fd}< <(command sleep "$delay")
@@ -159,6 +180,7 @@ _zshrinkwrap_start_timer() {
 TRAPWINCH() {
   emulate -L zsh
   local trap_status=0
+  local restore_delay
 
   if (( $+functions[_zshrinkwrap_previous_trapwinch] )); then
     _zshrinkwrap_previous_trapwinch || trap_status=$?
@@ -166,8 +188,10 @@ TRAPWINCH() {
 
   if zle 2>/dev/null; then
     _zshrinkwrap_adjust
-    (( _zshrinkwrap_deadline = EPOCHREALTIME + ZSHRINKWRAP_RESTORE_DELAY ))
-    _zshrinkwrap_start_timer
+    _zshrinkwrap_style restore-delay
+    restore_delay=$REPLY
+    (( _zshrinkwrap_deadline = EPOCHREALTIME + restore_delay ))
+    _zshrinkwrap_start_timer $restore_delay
   fi
 
   _zshrinkwrap_last_cols=${COLUMNS:-80}

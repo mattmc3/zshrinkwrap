@@ -7,8 +7,24 @@ setup() {
 @test "uses responsive defaults" {
   run zsh -fc '
     source "$PLUGIN_PATH"
-    [[ $ZSHRINKWRAP_SYMBOL == "%F{magenta}%#%f " &&
-       $ZSHRINKWRAP_RESTORE_DELAY == 0.20 ]]
+    _zshrinkwrap_style symbol
+    [[ $REPLY == "%F{magenta}%#%f " ]]
+    _zshrinkwrap_style restore-delay
+    [[ $REPLY == 0.20 ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "falls back to the default when a style is empty" {
+  run zsh -fc '
+    zstyle ":zshrinkwrap:resize" symbol ""
+    zstyle ":zshrinkwrap:resize" restore-delay ""
+    source "$PLUGIN_PATH"
+    _zshrinkwrap_style symbol
+    [[ $REPLY == "%F{magenta}%#%f " ]]
+    _zshrinkwrap_style restore-delay
+    [[ $REPLY == 0.20 ]]
   '
 
   [ "$status" -eq 0 ]
@@ -16,10 +32,12 @@ setup() {
 
 @test "supports prompt color escapes in symbol" {
   run zsh -fc '
-    ZSHRINKWRAP_SYMBOL="%F{magenta}❯%f "
+    zstyle ":zshrinkwrap:resize" symbol "%F{magenta}❯%f "
+    zstyle ":zshrinkwrap:resize" shrink-lprompt yes
     source "$PLUGIN_PATH"
+    zle() { return 0 }
 
-    _zshrinkwrap_begin
+    _zshrinkwrap_adjust
 
     [[ $PROMPT == "%F{magenta}❯%f " ]]
     expanded_prompt=${(%)PROMPT}
@@ -70,49 +88,35 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
-@test "clears a single row when nothing wraps" {
+@test "climbs to the reflowed top by default" {
   run zsh -fc '
+    TERM_PROGRAM=
     source "$PLUGIN_PATH"
-    COLUMNS=80; LINES=24; CURSOR=0; PROMPT="abc> "
-    _zshrinkwrap_clear_display | od -An -tx1 | tr -d " \n"
-  '
-
-  [ "$status" -eq 0 ]
-  [ "$output" = "0d1b5b304a" ]
-}
-
-@test "clears the rewrapped display region" {
-  run zsh -fc '
-    source "$PLUGIN_PATH"
+    zle() { return 0 }
     COLUMNS=10; LINES=24; CURSOR=20; PROMPT="abc> "
-    _zshrinkwrap_clear_display | od -An -tx1 | tr -d " \n"
+    _zshrinkwrap_last_cols=80
+
+    _zshrinkwrap_adjust | od -An -tx1 | tr -d " \n"
   '
 
   [ "$status" -eq 0 ]
-  [ "$output" = "1b5b32410d1b5b304a" ]
+  [ "$output" = "1b5b3241" ]
 }
 
-@test "clears only the current row during single-line editing" {
+@test "can disable the reflow climb" {
   run zsh -fc '
+    TERM_PROGRAM=
+    zstyle ":zshrinkwrap:resize" reflow no
     source "$PLUGIN_PATH"
-    setopt singlelinezle
-    COLUMNS=10; LINES=24; CURSOR=200; PROMPT="abc> "
-    _zshrinkwrap_clear_display | od -An -tx1 | tr -d " \n"
+    zle() { return 0 }
+    COLUMNS=10; LINES=24; CURSOR=20; PROMPT="abc> "
+    _zshrinkwrap_last_cols=80
+
+    _zshrinkwrap_adjust | od -An -tx1 | tr -d " \n"
   '
 
   [ "$status" -eq 0 ]
-  [ "$output" = "0d1b5b304a" ]
-}
-
-@test "caps the clear region at the screen height" {
-  run zsh -fc '
-    source "$PLUGIN_PATH"
-    COLUMNS=10; LINES=3; CURSOR=200; PROMPT="abc> "
-    _zshrinkwrap_clear_display | od -An -tx1 | tr -d " \n"
-  '
-
-  [ "$status" -eq 0 ]
-  [ "$output" = "1b5b32410d1b5b304a" ]
+  [ -z "$output" ]
 }
 
 @test "preserves an existing WINCH trap" {
@@ -138,18 +142,49 @@ setup() {
   [ "$status" -eq 23 ]
 }
 
-@test "uses compact prompt and single-line editor during resize" {
+@test "keeps left prompt and shrinks right prompt by default" {
   run zsh -fc '
-    unsetopt singlelinezle
     source "$PLUGIN_PATH"
     PROMPT="wide prompt > "
     RPROMPT="right prompt"
+    zle() { return 0 }
 
-    _zshrinkwrap_begin
+    _zshrinkwrap_adjust
 
-    [[ $PROMPT == "%F{magenta}%#%f " &&
-       -z $RPROMPT &&
-       -o singlelinezle ]]
+    [[ $PROMPT == "wide prompt > " && -z $RPROMPT ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "can shrink left prompt during resize" {
+  run zsh -fc '
+    zstyle ":zshrinkwrap:resize" shrink-lprompt true
+    source "$PLUGIN_PATH"
+    PROMPT="wide prompt > "
+    RPROMPT="right prompt"
+    zle() { return 0 }
+
+    _zshrinkwrap_adjust
+
+    [[ $PROMPT == "%F{magenta}%#%f " && -z $RPROMPT ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "can keep right prompt during resize" {
+  run zsh -fc '
+    zstyle ":zshrinkwrap:resize" shrink-rprompt no
+    source "$PLUGIN_PATH"
+    PROMPT="wide prompt > "
+    RPROMPT="right prompt"
+    zle() { return 0 }
+
+    _zshrinkwrap_adjust
+
+    [[ $PROMPT == "wide prompt > " &&
+       $RPROMPT == "right prompt" ]]
   '
 
   [ "$status" -eq 0 ]
@@ -162,7 +197,8 @@ setup() {
     PROMPT="wide prompt > "
     RPROMPT="right prompt"
 
-    _zshrinkwrap_begin
+    zle() { return 0 }
+    _zshrinkwrap_adjust
     _zshrinkwrap_restore
 
     [[ $PROMPT == "wide prompt > " ]]
@@ -177,8 +213,9 @@ setup() {
   run zsh -fc '
     setopt singlelinezle
     source "$PLUGIN_PATH"
+    zle() { return 0 }
 
-    _zshrinkwrap_begin
+    _zshrinkwrap_adjust
     _zshrinkwrap_restore
 
     [[ -o singlelinezle ]]
@@ -192,9 +229,10 @@ setup() {
     source "$PLUGIN_PATH"
     PROMPT="wide prompt > "
     RPROMPT="right prompt"
+    zle() { return 0 }
 
-    _zshrinkwrap_begin
-    _zshrinkwrap_begin
+    _zshrinkwrap_adjust
+    _zshrinkwrap_adjust
     _zshrinkwrap_restore
 
     [[ $PROMPT == "wide prompt > " ]]
@@ -226,8 +264,8 @@ setup() {
     source "$PLUGIN_PATH"
     zle() { return 0 }
 
-    _zshrinkwrap_begin
-    _zshrinkwrap_start_timer 5
+    _zshrinkwrap_adjust
+    _zshrinkwrap_start_timer 0.20
     [[ $_zshrinkwrap_timer_fd -ge 0 ]]
 
     _zshrinkwrap_restore
