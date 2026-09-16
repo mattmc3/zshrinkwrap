@@ -2,6 +2,8 @@
 
 setup() {
   export PLUGIN_PATH="$BATS_TEST_DIRNAME/../zshrinkwrap.plugin.zsh"
+  # Terminal detection picks the strategy, so tests must not inherit one.
+  export TERM_PROGRAM=
 }
 
 @test "uses responsive defaults" {
@@ -83,6 +85,212 @@ setup() {
     source "$PLUGIN_PATH"
     _zshrinkwrap_rows_above "%F{magenta}12345%f" 10 8
     [[ $REPLY == 1 ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "picks split strategy in VS Code" {
+  run zsh -fc '
+    TERM_PROGRAM=vscode
+    source "$PLUGIN_PATH"
+    _zshrinkwrap_strategy
+    [[ $REPLY == split ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "picks split strategy in Apple Terminal" {
+  run zsh -fc '
+    TERM_PROGRAM=Apple_Terminal
+    source "$PLUGIN_PATH"
+    _zshrinkwrap_strategy
+    [[ $REPLY == split ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "split prints upper prompt lines and leaves zle the last line" {
+  run zsh -fc '
+    zstyle ":zshrinkwrap:resize" strategy split
+    source "$PLUGIN_PATH"
+    PROMPT=$'"'"'top %F{red}line%f\n> '"'"'
+
+    out=$(_zshrinkwrap_split_precmd; print -rn -- "|${(%)PROMPT}")
+    [[ $out == $'"'"'top \e[31mline\e[39m\n|> '"'"' ]] || { print -r -- ${(q+)out}; exit 1 }
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "split records display widths of upper prompt lines" {
+  run zsh -fc '
+    zstyle ":zshrinkwrap:resize" strategy split
+    source "$PLUGIN_PATH"
+    PROMPT=$'"'"'%F{red}abc%f\nde\n> '"'"'
+
+    _zshrinkwrap_split_precmd >/dev/null
+    [[ ${_zshrinkwrap_upper_widths[*]} == "3 2" ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "split leaves a single-line prompt alone" {
+  run zsh -fc '
+    zstyle ":zshrinkwrap:resize" strategy split
+    source "$PLUGIN_PATH"
+    PROMPT="%~ %# "
+
+    out=$(_zshrinkwrap_split_precmd)
+    _zshrinkwrap_split_precmd
+    [[ -z $out && $PROMPT == "%~ %# " ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "split evaluates prompt_subst prompts before splitting" {
+  run zsh -fc '
+    zstyle ":zshrinkwrap:resize" strategy split
+    source "$PLUGIN_PATH"
+    setopt prompt_subst
+    integer calls=0
+    count() { (( ++calls )); print -rn -- "n$calls" }
+    PROMPT=$'"'"'$(count) top\n> '"'"'
+
+    _zshrinkwrap_split_precmd >/dev/null
+    [[ ${(%%)PROMPT} == "> " ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "split gives the original prompt back before each command" {
+  run zsh -fc '
+    zstyle ":zshrinkwrap:resize" strategy split
+    source "$PLUGIN_PATH"
+    PROMPT=$'"'"'top\n> '"'"'
+
+    _zshrinkwrap_split_precmd >/dev/null
+    _zshrinkwrap_split_preexec
+    [[ $PROMPT == $'"'"'top\n> '"'"' ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "split keeps the original prompt across prompts" {
+  run zsh -fc '
+    zstyle ":zshrinkwrap:resize" strategy split
+    source "$PLUGIN_PATH"
+    PROMPT=$'"'"'top\n> '"'"'
+
+    _zshrinkwrap_split_precmd >/dev/null
+    out=$(_zshrinkwrap_split_precmd)
+    [[ $out == top ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "split collapses both prompts on resize regardless of shrink styles" {
+  run zsh -fc '
+    zstyle ":zshrinkwrap:resize" strategy split
+    zstyle ":zshrinkwrap:resize" shrink-lprompt no
+    zstyle ":zshrinkwrap:resize" shrink-rprompt no
+    source "$PLUGIN_PATH"
+    PROMPT="wide prompt > "
+    RPROMPT="right prompt"
+    zle() { return 0 }
+
+    out=$(_zshrinkwrap_adjust)
+    _zshrinkwrap_adjust
+    [[ -z $out ]]
+    [[ $PROMPT == "%F{magenta}%#%f " && -z $RPROMPT ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "split redraw climbs the upper lines from the cursor row and clears" {
+  run zsh -fc '
+    zstyle ":zshrinkwrap:resize" strategy split
+    source "$PLUGIN_PATH"
+    PROMPT=$'"'"'0123456789\n> '"'"'
+    zle() { return 0 }
+
+    _zshrinkwrap_split_precmd >/dev/null
+    _zshrinkwrap_adjust
+    COLUMNS=4
+    _zshrinkwrap_split_redraw | head -c 9 | od -An -tx1 | tr -d " \n"
+  '
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "1b5b33410d1b5b304a" ]
+}
+
+@test "picks none strategy in Ghostty with shell integration" {
+  run zsh -fc '
+    TERM_PROGRAM=ghostty
+    source "$PLUGIN_PATH"
+    _ghostty_precmd() { : }
+    _zshrinkwrap_strategy
+    [[ $REPLY == none ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "picks estimate strategy in Ghostty without shell integration" {
+  run zsh -fc '
+    TERM_PROGRAM=ghostty
+    source "$PLUGIN_PATH"
+    _zshrinkwrap_strategy
+    [[ $REPLY == estimate ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "picks estimate strategy in other terminals" {
+  run zsh -fc '
+    TERM_PROGRAM=iTerm.app
+    source "$PLUGIN_PATH"
+    _zshrinkwrap_strategy
+    [[ $REPLY == estimate ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "strategy style overrides terminal detection" {
+  run zsh -fc '
+    TERM_PROGRAM=vscode
+    zstyle ":zshrinkwrap:resize" strategy none
+    source "$PLUGIN_PATH"
+    _zshrinkwrap_strategy
+    [[ $REPLY == none ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "none strategy leaves prompts and display alone on resize" {
+  run zsh -fc '
+    zstyle ":zshrinkwrap:resize" strategy none
+    source "$PLUGIN_PATH"
+    PROMPT="wide prompt > "
+    RPROMPT="right prompt"
+    zle() { return 0 }
+
+    out=$(TRAPWINCH)
+    TRAPWINCH >/dev/null
+    [[ -z $out ]]
+    [[ $PROMPT == "wide prompt > " && $RPROMPT == "right prompt" ]]
+    [[ $_zshrinkwrap_timer_fd -eq -1 ]]
   '
 
   [ "$status" -eq 0 ]
