@@ -18,7 +18,6 @@ zmodload zsh/datetime
 typeset -gi _zshrinkwrap_active=0
 typeset -gi _zshrinkwrap_pushed=0
 typeset -gi _zshrinkwrap_timer_fd=-1
-typeset -gi _zshrinkwrap_last_cols=${COLUMNS:-80}
 typeset -gi _zshrinkwrap_saved_cursor=0
 typeset -gF _zshrinkwrap_deadline=0.0
 typeset -g _zshrinkwrap_saved_prompt
@@ -52,8 +51,7 @@ _zshrinkwrap_style() {
 }
 
 # Pick how to handle a resize: `none` when the terminal cleans up the prompt
-# itself, `split` where the split prompt redraw is verified, `estimate`
-# otherwise.
+# itself, `split` otherwise.
 _zshrinkwrap_strategy() {
   emulate -L zsh
   local value
@@ -63,18 +61,16 @@ _zshrinkwrap_strategy() {
     return 0
   fi
 
-  case $TERM_PROGRAM in
-    vscode|Apple_Terminal) value=split ;;
-    # Ghostty clears prompts marked with OSC 133, which its integration adds.
-    ghostty)
-      if (( $+functions[_ghostty_precmd] || $+functions[_ghostty_deferred_init] )); then
-        value=none
-      else
-        value=estimate
-      fi
-      ;;
-    *) value=estimate ;;
-  esac
+  value=split
+  # Ghostty and kitty clear prompts marked with OSC 133, which their shell
+  # integrations add. Check the terminal too, so tmux inside them gets split.
+  if [[ $TERM_PROGRAM == ghostty ]] &&
+     (( $+functions[_ghostty_precmd] || $+functions[_ghostty_deferred_init] )); then
+    value=none
+  elif [[ $TERM == xterm-kitty ]] &&
+     (( $+functions[_ksi_precmd] || $+functions[_ksi_deferred_init] )); then
+    value=none
+  fi
   typeset -g REPLY=$value
 }
 
@@ -91,7 +87,6 @@ _zshrinkwrap_cancel_timer() {
 _zshrinkwrap_restore() {
   emulate -L zsh
   _zshrinkwrap_cancel_timer
-  _zshrinkwrap_last_cols=${COLUMNS:-80}
   (( _zshrinkwrap_active )) || return 0
 
   PROMPT=$_zshrinkwrap_saved_prompt
@@ -110,47 +105,10 @@ _zshrinkwrap_restore() {
   fi
 }
 
-# Estimate physical rows between the top of the prompt display and the
-# cursor when the display is wrapped to `cols` columns.
-_zshrinkwrap_rows_above() {
-  emulate -L zsh
-  local prompt=$1
-  local -i cols=$2 cursor=$3 rows=0 len i
-  local zero='%([BSUbfksu]|([FK]|){*})'
-  local -a lines=( "${(@f)${(S%%)prompt//$~zero/}}" )
-
-  (( cols > 0 )) || cols=80
-  for (( i = 1; i < $#lines; i++ )); do
-    len=${#lines[i]}
-    (( rows += (len > 0 ? (len - 1) / cols : 0) + 1 ))
-  done
-  (( rows += (${#lines[-1]} + cursor) / cols ))
-  typeset -g REPLY=$rows
-}
-
-# Runs inside TRAPWINCH. Before the trap, zsh redraws the display at the
-# new width, but it climbs to the old top using a row offset computed at
-# the old width, while the terminal's reflow moved the cursor to the new
-# width's offset. The drawing therefore lands delta rows off. Zsh then
-# parks the cursor on a fresh row below its drawing, and the end-of-trap
-# refresh climbs that same parked depth and clears with ED from there. So
-# a single cursor-up of delta rows makes that refresh land on the true
-# top, wiping both the stale rows and the displaced drawing.
+# Runs inside TRAPWINCH. Collapse the input line to the symbol with the
+# command stashed and no right prompt, so no redraw while resizing can wrap.
 _zshrinkwrap_adjust() {
   emulate -L zsh
-  local -i r_old r_new delta
-
-  _zshrinkwrap_strategy
-  local strategy=$REPLY
-  if [[ $strategy == estimate ]] && zstyle -T ':zshrinkwrap:resize' reflow; then
-    _zshrinkwrap_rows_above "$PROMPT" $_zshrinkwrap_last_cols ${CURSOR:-0}
-    r_old=$REPLY
-    _zshrinkwrap_rows_above "$PROMPT" ${COLUMNS:-80} ${CURSOR:-0}
-    r_new=$REPLY
-    (( delta = r_new - r_old ))
-    (( delta > LINES - 1 )) && delta=$(( LINES - 1 ))
-    (( delta > 0 )) && print -rn -- $'\e['${delta}'A'
-  fi
 
   if (( ! _zshrinkwrap_active )); then
     _zshrinkwrap_saved_prompt=$PROMPT
@@ -158,18 +116,13 @@ _zshrinkwrap_adjust() {
     _zshrinkwrap_saved_cursor=${CURSOR:-0}
     _zshrinkwrap_active=1
 
-    # Split needs a short input line so no redraw while resizing can wrap.
-    if [[ $strategy == split ]] || zstyle -t ':zshrinkwrap:resize' shrink-lprompt; then
-      if [[ -n $BUFFER ]]; then
-        _zshrinkwrap_saved_highlight=( "${region_highlight[@]}" )
-        zle push-line && _zshrinkwrap_pushed=1
-      fi
-      _zshrinkwrap_style symbol
-      PROMPT=$REPLY
+    if [[ -n $BUFFER ]]; then
+      _zshrinkwrap_saved_highlight=( "${region_highlight[@]}" )
+      zle push-line && _zshrinkwrap_pushed=1
     fi
-    if [[ $strategy == split ]] || zstyle -T ':zshrinkwrap:resize' shrink-rprompt; then
-      RPROMPT=''
-    fi
+    _zshrinkwrap_style symbol
+    PROMPT=$REPLY
+    RPROMPT=''
   fi
   zle reset-prompt
 }
@@ -190,13 +143,7 @@ _zshrinkwrap_timer_ready() {
   fi
 
   (( _zshrinkwrap_active )) || return 0
-  _zshrinkwrap_strategy
-  if [[ $REPLY == split ]]; then
-    _zshrinkwrap_split_redraw
-  else
-    _zshrinkwrap_restore
-    zle reset-prompt
-  fi
+  _zshrinkwrap_split_redraw
 }
 
 _zshrinkwrap_start_timer() {
@@ -232,11 +179,10 @@ TRAPWINCH() {
     _zshrinkwrap_start_timer $restore_delay
   fi
 
-  _zshrinkwrap_last_cols=${COLUMNS:-80}
   return $trap_status
 }
 
-# Split strategy. Zle only draws the last prompt line; the lines above it are
+# Split prompt: zle only draws the last prompt line. The lines above it are
 # printed at precmd like command output, so resizing reflows them as history
 # instead of leaving zle to redraw them from a stale row offset.
 
@@ -288,6 +234,17 @@ _zshrinkwrap_split_precmd() {
   _zshrinkwrap_strategy
   [[ $REPLY == split ]] || return 0
 
+  # Integrations like wezterm.sh wrap PROMPT at precmd and restore it in
+  # preexec. Split last and restore first so each sees its own prompt. If
+  # another hook ran after us this time, reorder and skip splitting once.
+  if [[ ${preexec_functions[1]} != _zshrinkwrap_split_preexec ]]; then
+    preexec_functions=( _zshrinkwrap_split_preexec ${preexec_functions:#_zshrinkwrap_split_preexec} )
+  fi
+  if [[ ${precmd_functions[-1]} != _zshrinkwrap_split_precmd ]]; then
+    precmd_functions=( ${precmd_functions:#_zshrinkwrap_split_precmd} _zshrinkwrap_split_precmd )
+    return 0
+  fi
+
   # A theme that rebuilt a prompt since last time wins over the saved copy.
   if [[ -z $_zshrinkwrap_split_set || $PROMPT != $_zshrinkwrap_split_set ]]; then
     _zshrinkwrap_split_orig=$PROMPT
@@ -324,10 +281,8 @@ _zshrinkwrap_split_redraw() {
   local subst=${options[prompt_subst]}
   emulate -L zsh
   [[ $subst == on ]] && setopt prompt_subst
-  local -i rows=0 len park
+  local -i rows=0 len
 
-  _zshrinkwrap_rows_above "$PROMPT" ${COLUMNS:-80} 0
-  park=$REPLY
   _zshrinkwrap_restore
   for len in $_zshrinkwrap_upper_widths; do
     (( rows += len > 0 ? (len + COLUMNS - 1) / COLUMNS : 1 ))
@@ -335,7 +290,6 @@ _zshrinkwrap_split_redraw() {
   (( rows > 0 )) && print -rn -- $'\e['$rows'A'
   print -rn -- $'\r\e[0J'
   [[ $PROMPT == $_zshrinkwrap_split_set ]] && _zshrinkwrap_split_print
-  (( park > 0 )) && print -rn -- ${(pl:park::\n:)}
   zle reset-prompt
 }
 

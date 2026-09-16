@@ -35,7 +35,6 @@ setup() {
 @test "supports prompt color escapes in symbol" {
   run zsh -fc '
     zstyle ":zshrinkwrap:resize" symbol "%F{magenta}❯%f "
-    zstyle ":zshrinkwrap:resize" shrink-lprompt yes
     source "$PLUGIN_PATH"
     zle() { return 0 }
 
@@ -45,68 +44,6 @@ setup() {
     expanded_prompt=${(%)PROMPT}
     [[ $expanded_prompt != $PROMPT ]]
     [[ $expanded_prompt == *❯* ]]
-  '
-
-  [ "$status" -eq 0 ]
-}
-
-@test "counts zero rows for a short unwrapped line" {
-  run zsh -fc '
-    source "$PLUGIN_PATH"
-    _zshrinkwrap_rows_above "abc> " 80 10
-    [[ $REPLY == 0 ]]
-  '
-
-  [ "$status" -eq 0 ]
-}
-
-@test "counts rows when the edit line wraps" {
-  run zsh -fc '
-    source "$PLUGIN_PATH"
-    _zshrinkwrap_rows_above "abc> " 10 20
-    [[ $REPLY == 2 ]]
-  '
-
-  [ "$status" -eq 0 ]
-}
-
-@test "counts extra prompt lines and their wraps" {
-  run zsh -fc '
-    source "$PLUGIN_PATH"
-    _zshrinkwrap_rows_above "123456789012345"$'\n'"abc> " 10 0
-    [[ $REPLY == 2 ]]
-  '
-
-  [ "$status" -eq 0 ]
-}
-
-@test "ignores zero-width prompt escapes when measuring" {
-  run zsh -fc '
-    source "$PLUGIN_PATH"
-    _zshrinkwrap_rows_above "%F{magenta}12345%f" 10 8
-    [[ $REPLY == 1 ]]
-  '
-
-  [ "$status" -eq 0 ]
-}
-
-@test "picks split strategy in VS Code" {
-  run zsh -fc '
-    TERM_PROGRAM=vscode
-    source "$PLUGIN_PATH"
-    _zshrinkwrap_strategy
-    [[ $REPLY == split ]]
-  '
-
-  [ "$status" -eq 0 ]
-}
-
-@test "picks split strategy in Apple Terminal" {
-  run zsh -fc '
-    TERM_PROGRAM=Apple_Terminal
-    source "$PLUGIN_PATH"
-    _zshrinkwrap_strategy
-    [[ $REPLY == split ]]
   '
 
   [ "$status" -eq 0 ]
@@ -228,20 +165,57 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
-@test "split collapses both prompts on resize regardless of shrink styles" {
+@test "split cooperates with a prompt wrapper added before the plugin" {
   run zsh -fc '
     zstyle ":zshrinkwrap:resize" strategy split
-    zstyle ":zshrinkwrap:resize" shrink-lprompt no
-    zstyle ":zshrinkwrap:resize" shrink-rprompt no
+    # Stand-in for integrations that wrap PROMPT at precmd and restore it
+    # in preexec, like wezterm.sh.
+    wrap_precmd() { saved=$PROMPT; PROMPT="<$PROMPT>"; check=$PROMPT }
+    wrap_preexec() { [[ $PROMPT == $check ]] && PROMPT=$saved }
+    printed=$(mktemp)
+    cycle() {
+      local f
+      for f in $precmd_functions; do $f; done >>$printed
+      prompts+=( "$PROMPT" )
+      for f in $preexec_functions; do $f; done
+    }
+    precmd_functions=( wrap_precmd )
+    preexec_functions=( wrap_preexec )
     source "$PLUGIN_PATH"
-    PROMPT="wide prompt > "
-    RPROMPT="right prompt"
-    zle() { return 0 }
+    PROMPT=$'"'"'top\n> '"'"'
 
-    out=$(_zshrinkwrap_adjust)
-    _zshrinkwrap_adjust
-    [[ -z $out ]]
-    [[ $PROMPT == "%F{magenta}%#%f " && -z $RPROMPT ]]
+    cycle; cycle; cycle
+    [[ $PROMPT == $'"'"'top\n> '"'"' ]] || exit 1
+    [[ $(grep -c "top" $printed) -ge 2 ]] || exit 2
+    [[ ${prompts[-1]} != *"<<"* ]] || exit 3
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "split cooperates with a prompt wrapper added after the plugin" {
+  run zsh -fc '
+    zstyle ":zshrinkwrap:resize" strategy split
+    # Stand-in for integrations that wrap PROMPT at precmd and restore it
+    # in preexec, like wezterm.sh.
+    wrap_precmd() { saved=$PROMPT; PROMPT="<$PROMPT>"; check=$PROMPT }
+    wrap_preexec() { [[ $PROMPT == $check ]] && PROMPT=$saved }
+    printed=$(mktemp)
+    cycle() {
+      local f
+      for f in $precmd_functions; do $f; done >>$printed
+      prompts+=( "$PROMPT" )
+      for f in $preexec_functions; do $f; done
+    }
+    source "$PLUGIN_PATH"
+    precmd_functions+=( wrap_precmd )
+    preexec_functions+=( wrap_preexec )
+    PROMPT=$'"'"'top\n> '"'"'
+
+    cycle; cycle; cycle
+    [[ $PROMPT == $'"'"'top\n> '"'"' ]] || exit 1
+    [[ $(grep -c "top" $printed) -ge 2 ]] || exit 2
+    [[ ${prompts[-1]} != *"<<"* ]] || exit 3
   '
 
   [ "$status" -eq 0 ]
@@ -276,23 +250,58 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
-@test "picks estimate strategy in Ghostty without shell integration" {
+@test "picks none strategy in kitty with shell integration" {
   run zsh -fc '
-    TERM_PROGRAM=ghostty
+    TERM=xterm-kitty
     source "$PLUGIN_PATH"
+    _ksi_precmd() { : }
     _zshrinkwrap_strategy
-    [[ $REPLY == estimate ]]
+    [[ $REPLY == none ]]
   '
 
   [ "$status" -eq 0 ]
 }
 
-@test "picks estimate strategy in other terminals" {
+@test "picks none strategy in kitty before its integration initializes" {
+  run zsh -fc '
+    TERM=xterm-kitty
+    source "$PLUGIN_PATH"
+    _ksi_deferred_init() { : }
+    _zshrinkwrap_strategy
+    [[ $REPLY == none ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "picks split strategy in kitty without shell integration" {
+  run zsh -fc '
+    TERM=xterm-kitty
+    source "$PLUGIN_PATH"
+    _zshrinkwrap_strategy
+    [[ $REPLY == split ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "picks split strategy in Ghostty without shell integration" {
+  run zsh -fc '
+    TERM_PROGRAM=ghostty
+    source "$PLUGIN_PATH"
+    _zshrinkwrap_strategy
+    [[ $REPLY == split ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "picks split strategy in other terminals" {
   run zsh -fc '
     TERM_PROGRAM=iTerm.app
     source "$PLUGIN_PATH"
     _zshrinkwrap_strategy
-    [[ $REPLY == estimate ]]
+    [[ $REPLY == split ]]
   '
 
   [ "$status" -eq 0 ]
@@ -328,37 +337,6 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
-@test "climbs to the reflowed top by default" {
-  run zsh -fc '
-    TERM_PROGRAM=
-    source "$PLUGIN_PATH"
-    zle() { return 0 }
-    COLUMNS=10; LINES=24; CURSOR=20; PROMPT="abc> "
-    _zshrinkwrap_last_cols=80
-
-    _zshrinkwrap_adjust | od -An -tx1 | tr -d " \n"
-  '
-
-  [ "$status" -eq 0 ]
-  [ "$output" = "1b5b3241" ]
-}
-
-@test "can disable the reflow climb" {
-  run zsh -fc '
-    TERM_PROGRAM=
-    zstyle ":zshrinkwrap:resize" reflow no
-    source "$PLUGIN_PATH"
-    zle() { return 0 }
-    COLUMNS=10; LINES=24; CURSOR=20; PROMPT="abc> "
-    _zshrinkwrap_last_cols=80
-
-    _zshrinkwrap_adjust | od -An -tx1 | tr -d " \n"
-  '
-
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-}
-
 @test "preserves an existing WINCH trap" {
   run zsh -fc '
     TRAPWINCH() { return 23 }
@@ -382,49 +360,18 @@ setup() {
   [ "$status" -eq 23 ]
 }
 
-@test "keeps left prompt and shrinks right prompt by default" {
+@test "collapses both prompts on resize without moving the cursor" {
   run zsh -fc '
     source "$PLUGIN_PATH"
     PROMPT="wide prompt > "
     RPROMPT="right prompt"
+    COLUMNS=10; LINES=24; CURSOR=20
     zle() { return 0 }
 
+    out=$(_zshrinkwrap_adjust)
     _zshrinkwrap_adjust
-
-    [[ $PROMPT == "wide prompt > " && -z $RPROMPT ]]
-  '
-
-  [ "$status" -eq 0 ]
-}
-
-@test "can shrink left prompt during resize" {
-  run zsh -fc '
-    zstyle ":zshrinkwrap:resize" shrink-lprompt true
-    source "$PLUGIN_PATH"
-    PROMPT="wide prompt > "
-    RPROMPT="right prompt"
-    zle() { return 0 }
-
-    _zshrinkwrap_adjust
-
+    [[ -z $out ]]
     [[ $PROMPT == "%F{magenta}%#%f " && -z $RPROMPT ]]
-  '
-
-  [ "$status" -eq 0 ]
-}
-
-@test "can keep right prompt during resize" {
-  run zsh -fc '
-    zstyle ":zshrinkwrap:resize" shrink-rprompt no
-    source "$PLUGIN_PATH"
-    PROMPT="wide prompt > "
-    RPROMPT="right prompt"
-    zle() { return 0 }
-
-    _zshrinkwrap_adjust
-
-    [[ $PROMPT == "wide prompt > " &&
-       $RPROMPT == "right prompt" ]]
   '
 
   [ "$status" -eq 0 ]
@@ -432,7 +379,6 @@ setup() {
 
 @test "keeps syntax highlighting across a stashed command" {
   run zsh -fc '
-    zstyle ":zshrinkwrap:resize" shrink-lprompt yes
     source "$PLUGIN_PATH"
     BUFFER="echo hi"
     CURSOR=7
@@ -450,40 +396,6 @@ setup() {
     _zshrinkwrap_restore
     [[ $BUFFER == "echo hi" ]] || exit 2
     [[ ${region_highlight[*]} == "0 4 fg=green" ]] || exit 3
-  '
-
-  [ "$status" -eq 0 ]
-}
-
-@test "restores prompt and editor mode" {
-  run zsh -fc '
-    unsetopt singlelinezle
-    source "$PLUGIN_PATH"
-    PROMPT="wide prompt > "
-    RPROMPT="right prompt"
-
-    zle() { return 0 }
-    _zshrinkwrap_adjust
-    _zshrinkwrap_restore
-
-    [[ $PROMPT == "wide prompt > " ]]
-    [[ $RPROMPT == "right prompt" ]]
-    [[ ! -o singlelinezle ]]
-  '
-
-  [ "$status" -eq 0 ]
-}
-
-@test "preserves an existing single-line editor setting" {
-  run zsh -fc '
-    setopt singlelinezle
-    source "$PLUGIN_PATH"
-    zle() { return 0 }
-
-    _zshrinkwrap_adjust
-    _zshrinkwrap_restore
-
-    [[ -o singlelinezle ]]
   '
 
   [ "$status" -eq 0 ]

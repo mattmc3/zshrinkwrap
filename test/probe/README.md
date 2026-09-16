@@ -32,27 +32,6 @@ Report the column too: a correct restore puts `[1]` at the start of the line.
 Run `zsh test/probe/decsc.zsh short` to keep the anchor line itself from
 wrapping, which separates reflow above the anchor from reflow of the anchor.
 
-## anchor.zsh
-
-Can a saved-cursor anchor keep the prompt clean through a resize?
-
-```sh
-zsh -f
-source test/probe/anchor.zsh twoline auto   # layout: oneline|twoline
-```
-
-Modes:
-
-- `auto`: fix the anchor and redraw on every resize event.
-- `collapse`: fix the anchor on the first resize event, show a short prompt
-  while resizing, and redraw the full prompt once resizing settles.
-- `manual`: do nothing on resize. Press Ctrl-G to redraw from the anchor.
-
-Run a few commands so there is history above the prompt, then resize back and
-forth, both slowly and quickly. Report whether the prompt ends clean, whether
-stale prompt lines remain, and whether any history was eaten. Try with a long
-command typed but not run, too.
-
 ## split.zsh
 
 Does printing the upper prompt lines outside zle make resize race-free? zle
@@ -74,7 +53,9 @@ The anchor argument picks how the input line is found once resizing settles:
   cursor's own line alone on resize (VS Code), but immune to zsh output lag.
 
 Resize slowly and quickly, with no command, a short command, and a command long
-enough to wrap before you start. Report as for `anchor.zsh`.
+enough to wrap before you start. Run a few commands first so there is history
+above the prompt. Report whether the prompt ends clean, whether stale prompt
+lines remain, and whether any history was eaten.
 
 ## marks.zsh
 

@@ -18,23 +18,22 @@ The damage comes from rows between the top of the prompt and the cursor
 changing height when the terminal rewraps them. Zsh climbs back to the top
 using the old height and redraws from the wrong row.
 
-- **Ghostty** with its shell integration loaded clears marked prompts itself,
-  so zshrinkwrap stays out of the way.
-- **VS Code and Apple Terminal** use the split strategy. At each prompt,
+- **Ghostty and kitty** with their shell integration loaded clear marked
+  prompts themselves, so zshrinkwrap stays out of the way.
+- **Every other terminal** uses the split strategy. At each prompt,
   zshrinkwrap prints every prompt line but the last as ordinary output, so zle
   only draws the input line. On the first resize the input line collapses to a
   small symbol with the command stashed and the right prompt removed, so
   nothing zle draws while resizing can wrap. Once resizing settles, the upper
   lines are measured up from the cursor row at the final width, cleared, and
-  printed again with the full prompt and command.
-- **Other terminals** use the older estimate strategy: guess how many rows the
-  rewrapped display occupies and climb that far before zsh redraws. It is not
-  verified on any terminal yet.
+  printed again with the full prompt and command. It has been verified in
+  VS Code, Apple Terminal, and WezTerm.
 
 Known limits of the split strategy: a very fast first resize step can still
 leave one stale row when zsh's output lags behind the terminal, and upper
 prompt lines are not refreshed by async theme updates or `reset-prompt` until
-the next prompt.
+the next prompt. It assumes the terminal rewraps lines on resize; in terminals
+that truncate them instead (eg: plain xterm), set the strategy to `none`.
 
 ## Requirements
 
@@ -57,34 +56,21 @@ plugin:
 ```zsh
 zstyle ':zshrinkwrap:resize' symbol '%F{magenta}❯%f '
 zstyle ':zshrinkwrap:resize' restore-delay 0.20
-zstyle ':zshrinkwrap:resize' shrink-lprompt false
-zstyle ':zshrinkwrap:resize' shrink-rprompt true
-zstyle ':zshrinkwrap:resize' reflow true
-zstyle ':zshrinkwrap:resize' strategy estimate
+zstyle ':zshrinkwrap:resize' strategy split
 ```
 
-The `symbol` style supports Zsh prompt escapes, including `%F{color}` and
-`%f`. It defaults to `%F{magenta}%#%f `. The `restore-delay` style defaults to
-`0.20` seconds. Setting a style to an empty value falls back to its default.
+The `symbol` style is the short prompt shown while resizing. Keep it to one
+short line. It supports Zsh prompt escapes, including `%F{color}` and `%f`, and
+defaults to `%F{magenta}%#%f `. The `restore-delay` style is how long resizing
+must pause before the full prompt is redrawn, and defaults to `0.20` seconds.
+Setting a style to an empty value falls back to its default.
 
-The `shrink-lprompt` and `shrink-rprompt` styles control which prompts shrink
-during resize. `shrink-lprompt` defaults to `false`; `shrink-rprompt` defaults
-to `true`.
+The `strategy` style picks how a resize is handled:
 
-The `reflow` style compensates for the terminal rewrapping the prompt at the
-new width. It defaults to `true`. Set it to `false` in terminals that do not
-reflow existing lines on resize, or when the correction itself misplaces the
-prompt.
-
-The `strategy` style picks how a resize is handled. By default it depends on
-the terminal:
-
-- `none`: leave the prompt alone. Used in Ghostty when its shell integration
-  is loaded.
 - `split`: print upper prompt lines outside zle and redraw once resizing
-  settles. Used in VS Code and Apple Terminal. It always collapses both
-  prompts during a resize, ignoring `shrink-lprompt` and `shrink-rprompt`.
-- `estimate`: estimate how far reflow moved the prompt. Used everywhere else.
+  settles. The default.
+- `none`: leave the prompt alone. The default in Ghostty and kitty when their
+  shell integration is loaded.
 
 ## Test
 
