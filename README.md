@@ -26,8 +26,7 @@ using the old height and redraws from the wrong row.
   small symbol with the command stashed and the right prompt removed, so
   nothing zle draws while resizing can wrap. Once resizing settles, the upper
   lines are measured up from the cursor row at the final width, cleared, and
-  printed again with the full prompt and command. It has been verified in
-  VS Code, Apple Terminal, and WezTerm.
+  printed again with the full prompt and command.
 
 Known limits of the split strategy: a very fast first resize step can still
 leave one stale row when zsh's output lags behind the terminal, and upper
@@ -35,9 +34,25 @@ prompt lines are not refreshed by async theme updates or `reset-prompt` until
 the next prompt. It assumes the terminal rewraps lines on resize; in terminals
 that truncate them instead (eg: plain xterm), set the strategy to `none`.
 
+## Tested terminals
+
+Tested on macOS with Zsh 5.9:
+
+- **Ghostty** and **kitty** with shell integration: left to the terminal.
+- **VS Code**, **Apple Terminal**, and **WezTerm**: split strategy, clean in
+  manual resize testing, including with a long command typed.
+- **iTerm2** (with or without its shell integration): split strategy, clean at
+  an empty prompt.
+- **tmux**: split strategy, clean at an empty prompt. Resizing with a long
+  command already typed can leave a stale row, because tmux notifies the shell
+  of resizes late.
+
+Other terminals, including Linux terminals, get the split strategy but have
+not been tested yet.
+
 ## Requirements
 
-- Zsh
+- Zsh 5.1 or newer
 - `sleep`
 
 ## Install
@@ -50,8 +65,8 @@ source /path/to/zshrinkwrap/zshrinkwrap.plugin.zsh
 
 ## Configure
 
-Styles are read at resize time, so set them before or after sourcing the
-plugin:
+Styles are read each time they are used, so set them before or after sourcing
+the plugin:
 
 ```zsh
 zstyle ':zshrinkwrap:resize' symbol '%F{magenta}❯%f '

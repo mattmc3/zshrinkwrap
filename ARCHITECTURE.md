@@ -286,6 +286,12 @@ Corrections to earlier beliefs:
 
 ## Testing
 
+### Zsh versions
+
+The unit tests pass on Zsh 5.1.1, 5.2, 5.3.1, 5.5.1, 5.8, and 5.9, run in
+`zshusers/zsh` containers with `TERM=xterm-256color`. Zsh 5.0.8 cannot parse
+the plugin (multi-line `typeset -gA` assignment), so 5.1 is the minimum.
+
 ### Unit tests
 
 ```sh
