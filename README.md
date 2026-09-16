@@ -22,32 +22,32 @@ The same terminal and prompt with zshrinkwrap:
 
 ![Resizing with zshrinkwrap keeps a single clean prompt](https://github.com/mattmc3/zshrinkwrap/blob/assets/zshrinkwrap-demo.gif?raw=true)
 
-## How cleanup works
+## How it works
 
-The damage comes from rows between the top of the prompt and the cursor
-changing height when the terminal rewraps them. Zsh climbs back to the top
-using the old height and redraws from the wrong row.
+When you resize a terminal, it rewraps the text already on screen before Zsh
+learns the new size. If your prompt takes more than one row, that rewrap
+changes how far the top of the prompt is from the cursor, so Zsh redraws from
+the wrong place.
 
-- **Ghostty and kitty** with their shell integration loaded clear marked
-  prompts themselves, so zshrinkwrap stays out of the way.
-- **Every other terminal** uses the split strategy. At each prompt,
-  zshrinkwrap prints every prompt line but the last as ordinary output, so zle
-  only draws the input line. On the first resize the input line collapses to a
-  small symbol with the command stashed and the right prompt removed, so
-  nothing zle draws while resizing can wrap. Once resizing settles, the upper
-  lines are measured up from the cursor row at the final width, cleared, and
-  printed again with the full prompt and command.
+zshrinkwrap prints all but the last line of your prompt as regular output, so
+Zsh only has to redraw the line you type on. When a resize starts, that line
+shrinks to a short symbol and your command is set aside. When the resize stops,
+the full prompt is drawn again and your command comes back.
 
-Prompt themes that redraw the prompt themselves need care. powerlevel10k is
-detected and handled through its own hooks, so its transient prompt and async
-segments keep working. Other themes that rely on `zle reset-prompt` to redraw
-multi-line prompts may show stale upper lines until the next prompt.
+Some terminals already handle this themselves. Ghostty and kitty clear and
+redraw the prompt on resize when their shell integration is loaded, so
+zshrinkwrap stays out of the way there.
 
-Known limits of the split strategy: a very fast first resize step can still
-leave one stale row when zsh's output lags behind the terminal, and upper
-prompt lines are not refreshed by async theme updates or `reset-prompt` until
-the next prompt. It assumes the terminal rewraps lines on resize; in terminals
-that truncate them instead (eg: plain xterm), set the strategy to `none`.
+powerlevel10k is supported directly, so its transient prompt and async segments
+keep working. Other themes that update a multi-line prompt in place may show
+old upper lines until the next prompt.
+
+Limits:
+
+- A very fast resize can still leave a stray row when the terminal gets ahead
+  of Zsh.
+- Terminals that cut off long lines instead of rewrapping them (eg: plain
+  xterm) should use the `none` strategy.
 
 ## Tested terminals
 
