@@ -194,7 +194,9 @@ preexec (`wezterm.sh` only if `PROMPT` still matches what it set; iTerm2
 unconditionally). Without this ordering, the marks pile up every prompt, or
 the integration saves the split one-line prompt and later restores it as the
 original, losing the upper lines. If another hook ran after the split precmd,
-it reorders the hooks and skips splitting for that one prompt.
+it reorders the hooks and skips splitting for that one prompt. It does this
+only once per shell: Ghostty's and kitty's integrations also move themselves
+last, and fighting them would skip splitting on every prompt.
 
 Sourcing the plugin again restores state and any previous `TRAPWINCH` before
 redefining everything.

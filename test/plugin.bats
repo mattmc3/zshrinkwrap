@@ -251,6 +251,32 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
+@test "split still splits beside a hook that insists on running last" {
+  run zsh -fc '
+    zstyle ":zshrinkwrap:resize" strategy split
+    # Like Ghostty and kitty integrations, which move themselves last.
+    last_precmd() {
+      precmd_functions=( ${precmd_functions:#last_precmd} last_precmd )
+    }
+    printed=$(mktemp)
+    trap "rm -f $printed" EXIT
+    cycle() {
+      local f
+      for f in $precmd_functions; do $f; done >>$printed
+      for f in $preexec_functions; do $f; done
+    }
+    source "$PLUGIN_PATH"
+    precmd_functions+=( last_precmd )
+    PROMPT=$'"'"'top\n> '"'"'
+
+    cycle; cycle; cycle; cycle
+    [[ $(grep -c "top" $printed) -ge 2 ]] || exit 1
+    [[ $PROMPT == $'"'"'top\n> '"'"' ]] || exit 2
+  '
+
+  [ "$status" -eq 0 ]
+}
+
 @test "split redraw climbs the upper lines from the cursor row and clears" {
   run zsh -fc '
     zstyle ":zshrinkwrap:resize" strategy split

@@ -18,6 +18,7 @@ zmodload zsh/datetime
 typeset -gi _zshrinkwrap_active=0
 typeset -gi _zshrinkwrap_pushed=0
 typeset -gi _zshrinkwrap_timer_fd=-1
+typeset -gi _zshrinkwrap_reordered=0
 typeset -gi _zshrinkwrap_saved_cursor=0
 typeset -gF _zshrinkwrap_deadline=0.0
 typeset -g _zshrinkwrap_saved_prompt
@@ -236,12 +237,14 @@ _zshrinkwrap_split_precmd() {
 
   # Integrations like wezterm.sh wrap PROMPT at precmd and restore it in
   # preexec. Split last and restore first so each sees its own prompt. If
-  # another hook ran after us this time, reorder and skip splitting once.
+  # another hook ran after us, reorder and skip splitting once. Only once, so
+  # a hook that also keeps moving itself last cannot stop splitting for good.
   if [[ ${preexec_functions[1]} != _zshrinkwrap_split_preexec ]]; then
     preexec_functions=( _zshrinkwrap_split_preexec ${preexec_functions:#_zshrinkwrap_split_preexec} )
   fi
-  if [[ ${precmd_functions[-1]} != _zshrinkwrap_split_precmd ]]; then
+  if [[ ${precmd_functions[-1]} != _zshrinkwrap_split_precmd ]] && (( ! _zshrinkwrap_reordered )); then
     precmd_functions=( ${precmd_functions:#_zshrinkwrap_split_precmd} _zshrinkwrap_split_precmd )
+    _zshrinkwrap_reordered=1
     return 0
   fi
 
