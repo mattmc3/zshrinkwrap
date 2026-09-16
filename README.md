@@ -73,6 +73,7 @@ wins:
 ```zsh
 # All terminals
 zstyle ':zshrinkwrap:resize:*' symbol '%F{magenta}❯%f '
+zstyle ':zshrinkwrap:resize:*' stashed-symbol '%F{magenta}❯%f %F{8}…%f'
 zstyle ':zshrinkwrap:resize:*' restore-delay 0.20
 
 # One terminal
@@ -87,9 +88,12 @@ them before or after sourcing the plugin.
 
 The `symbol` style is the short prompt shown while resizing. Keep it to one
 short line. It supports Zsh prompt escapes, including `%F{color}` and `%f`, and
-defaults to `%F{magenta}%#%f `. The `restore-delay` style is how long resizing
-must pause before the full prompt is redrawn, and defaults to `0.20` seconds.
-Setting a style to an empty value falls back to its default.
+defaults to `%F{magenta}%#%f `. When a command is typed, it is stashed while
+resizing and `stashed-symbol` is shown instead, defaulting to `%F{magenta}%#%f
+%F{8}…%f`. If your terminal draws ambiguous-width characters as double width,
+use `...` instead of `…`. The `restore-delay` style is how long resizing must
+pause before the full prompt is redrawn, and defaults to `0.20` seconds. Setting
+a style to an empty value falls back to its default.
 
 The `strategy` style picks how a resize is handled:
 

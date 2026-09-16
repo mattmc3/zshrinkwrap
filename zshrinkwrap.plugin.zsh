@@ -31,14 +31,16 @@ typeset -g _zshrinkwrap_rprompt_orig
 typeset -g _zshrinkwrap_rprompt_set
 typeset -ga _zshrinkwrap_upper_widths=()
 typeset -ga _zshrinkwrap_saved_highlight=()
+typeset -g _zshrinkwrap_saved_postdisplay
 
 if (( $+functions[TRAPWINCH] && ! $+functions[_zshrinkwrap_previous_trapwinch] )); then
   functions[_zshrinkwrap_previous_trapwinch]=$functions[TRAPWINCH]
 fi
 
 typeset -gA _zshrinkwrap_defaults=(
-  symbol        '%F{magenta}%#%f '
-  restore-delay '0.20'
+  symbol         '%F{magenta}%#%f '
+  stashed-symbol '%F{magenta}%#%f %F{8}…%f'
+  restore-delay  '0.20'
 )
 
 # Styles are looked up in `:zshrinkwrap:resize:<terminal>`, so users can set
@@ -115,10 +117,15 @@ _zshrinkwrap_restore() {
     region_highlight=( "${_zshrinkwrap_saved_highlight[@]}" )
     _zshrinkwrap_pushed=0
   fi
+  if [[ -n $_zshrinkwrap_saved_postdisplay ]] && zle 2>/dev/null; then
+    POSTDISPLAY=$_zshrinkwrap_saved_postdisplay
+  fi
+  _zshrinkwrap_saved_postdisplay=
 }
 
-# Runs inside TRAPWINCH. Collapse the input line to the symbol with the
+# Widget run from TRAPWINCH. Collapse the input line to the symbol with the
 # command stashed and no right prompt, so no redraw while resizing can wrap.
+# As a widget it can write zle state such as POSTDISPLAY.
 _zshrinkwrap_adjust() {
   emulate -L zsh
 
@@ -132,7 +139,16 @@ _zshrinkwrap_adjust() {
       _zshrinkwrap_saved_highlight=( "${region_highlight[@]}" )
       zle push-line && _zshrinkwrap_pushed=1
     fi
-    _zshrinkwrap_style symbol
+    # Autosuggestions draw their prediction in POSTDISPLAY, which would make
+    # the collapsed line long enough to wrap.
+    _zshrinkwrap_saved_postdisplay=$POSTDISPLAY
+    POSTDISPLAY=
+    # A marker shows the command is stashed, not lost.
+    if (( _zshrinkwrap_pushed )); then
+      _zshrinkwrap_style stashed-symbol
+    else
+      _zshrinkwrap_style symbol
+    fi
     PROMPT=$REPLY
     RPROMPT=''
   fi
@@ -202,7 +218,7 @@ TRAPWINCH() {
   _zshrinkwrap_strategy
   if [[ $REPLY != none ]] && zle 2>/dev/null; then
     _zshrinkwrap_tmux_waits=0
-    _zshrinkwrap_adjust
+    zle _zshrinkwrap_adjust
     _zshrinkwrap_style restore-delay
     restore_delay=$REPLY
     (( _zshrinkwrap_deadline = EPOCHREALTIME + restore_delay ))
@@ -326,6 +342,7 @@ _zshrinkwrap_split_redraw() {
 }
 
 autoload -Uz add-zsh-hook
+zle -N _zshrinkwrap_adjust
 zle -N _zshrinkwrap_timer_ready
 add-zsh-hook precmd _zshrinkwrap_restore
 add-zsh-hook precmd _zshrinkwrap_split_precmd

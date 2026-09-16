@@ -496,6 +496,59 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
+@test "marks a stashed command with its own symbol" {
+  run zsh -fc '
+    source "$PLUGIN_PATH"
+    PROMPT="wide prompt > "
+    BUFFER="echo hi"
+    zle() { [[ $1 == push-line ]] && BUFFER=; return 0 }
+
+    _zshrinkwrap_adjust
+    [[ $PROMPT == "%F{magenta}%#%f %F{8}…%f" ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "stashed symbol can be customized" {
+  run zsh -fc '
+    zstyle ":zshrinkwrap:resize:*" stashed-symbol "%# ..."
+    source "$PLUGIN_PATH"
+    PROMPT="wide prompt > "
+    BUFFER="echo hi"
+    zle() { [[ $1 == push-line ]] && BUFFER=; return 0 }
+
+    _zshrinkwrap_adjust
+    [[ $PROMPT == "%# ..." ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "hides an autosuggestion while resizing and brings it back" {
+  run zsh -fc '
+    source "$PLUGIN_PATH"
+    BUFFER="# t"
+    CURSOR=3
+    POSTDISPLAY="his is a long suggestion"
+    zle() {
+      case $1 in
+        push-line) _stash=$BUFFER; BUFFER= ;;
+        get-line) BUFFER=$_stash ;;
+      esac
+      return 0
+    }
+
+    _zshrinkwrap_adjust
+    [[ -z $POSTDISPLAY ]] || exit 1
+    _zshrinkwrap_restore
+    [[ $BUFFER == "# t" ]] || exit 2
+    [[ $POSTDISPLAY == "his is a long suggestion" ]] || exit 3
+  '
+
+  [ "$status" -eq 0 ]
+}
+
 @test "keeps syntax highlighting across a stashed command" {
   run zsh -fc '
     source "$PLUGIN_PATH"

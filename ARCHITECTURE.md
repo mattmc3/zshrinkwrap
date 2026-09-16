@@ -103,11 +103,16 @@ The main mechanism. Its states:
 Printed upper lines reflow like any other history, and zle never climbs into
 them.
 
-**First `SIGWINCH` of a burst.** In `TRAPWINCH`, via `_zshrinkwrap_adjust`:
+**First `SIGWINCH` of a burst.** `TRAPWINCH` runs the `_zshrinkwrap_adjust`
+widget, which:
 
 - Saves `PROMPT`, `RPROMPT`, `CURSOR`, and `region_highlight`.
+- Saves and clears `POSTDISPLAY`, where autosuggestion plugins draw their
+  prediction; left in place it makes the collapsed line wrap.
 - Stashes the command with `zle push-line`.
-- Sets `PROMPT` to the `symbol` style and clears `RPROMPT`.
+- Sets `PROMPT` to the `symbol` style, or `stashed-symbol` (`% …` by default)
+  when a command was stashed, and clears `RPROMPT`. Both must stay one short
+  line.
 
 The input line is now short enough that no zle redraw during the resize can
 wrap it, so its position no longer depends on the width.
@@ -148,6 +153,9 @@ Why each piece exists:
   autowraps and the cursor drops a row. That left one stale prompt copy per
   drag burst in VS Code. With DECAWM off, the text overwrites the last column
   instead.
+- **Collapse as a widget.** Inside a trap, zle state such as `POSTDISPLAY` is
+  read-only, and assigning it aborts the function before anything collapses.
+  `TRAPWINCH` calls `zle _zshrinkwrap_adjust` so the collapse runs as a widget.
 - **Timer handler as a widget (`zle -F -w`).** A plain fd handler does not
   have live zle state. Setting `region_highlight` from it changed an ordinary
   shell variable, and syntax highlighting (zsh-patina) vanished after the
@@ -181,7 +189,7 @@ Everything lives in `zshrinkwrap.plugin.zsh`.
 | `_zshrinkwrap_style` | Read a zstyle, treating empty values as unset |
 | `_zshrinkwrap_strategy` | Pick `none` or `split` |
 | `TRAPWINCH` | Chain any previous trap, then adjust and start the settle timer |
-| `_zshrinkwrap_adjust` | Save and collapse prompts, stash the command |
+| `_zshrinkwrap_adjust` | Widget: save and collapse prompts, stash the command, hide autosuggestions |
 | `_zshrinkwrap_start_timer`, `_zshrinkwrap_timer_ready`, `_zshrinkwrap_cancel_timer` | Debounced settle timer on a `sleep` fd; in tmux, waits (up to 5 times) until `pane_width` matches `COLUMNS` |
 | `_zshrinkwrap_restore` | Restore prompts, command, cursor, highlighting (also a precmd hook) |
 | `_zshrinkwrap_split_precmd`, `_zshrinkwrap_split_print` | Print upper prompt lines, hand zle the last line, wrap `RPROMPT` |
@@ -283,6 +291,12 @@ Corrections to earlier beliefs:
   asks tmux for `pane_width` and waits (up to 5 times) if it differs from
   `COLUMNS`. The first `SIGWINCH` redraw still happens at a stale width, so a
   command that wraps when a resize starts usually leaves a stale row in tmux.
+- **WezTerm narrow resizes erase history.** When a rewrap leaves the cursor in
+  column 0, WezTerm moves it onto the previous line (`rewrap_lines` in
+  `term/src/screen.rs`). A resize that lands while zsh is mid-redraw can put
+  the cursor on a history row, and zsh's next clear erases it. It happens
+  without zshrinkwrap too, with a command typed and a very narrow window, so
+  the plugin cannot prevent it.
 - **Unverified terminals** (Ghostty or kitty without integration,
   Alacritty, others) get `split` by default. Terminals that truncate instead of
   rewrapping need `strategy none`.
