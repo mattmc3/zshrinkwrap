@@ -173,6 +173,7 @@ setup() {
     wrap_precmd() { saved=$PROMPT; PROMPT="<$PROMPT>"; check=$PROMPT }
     wrap_preexec() { [[ $PROMPT == $check ]] && PROMPT=$saved }
     printed=$(mktemp)
+    trap "rm -f $printed" EXIT
     cycle() {
       local f
       for f in $precmd_functions; do $f; done >>$printed
@@ -201,6 +202,7 @@ setup() {
     wrap_precmd() { saved=$PROMPT; PROMPT="<$PROMPT>"; check=$PROMPT }
     wrap_preexec() { [[ $PROMPT == $check ]] && PROMPT=$saved }
     printed=$(mktemp)
+    trap "rm -f $printed" EXIT
     cycle() {
       local f
       for f in $precmd_functions; do $f; done >>$printed
