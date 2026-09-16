@@ -18,6 +18,7 @@ zmodload zsh/datetime
 typeset -gi _zshrinkwrap_active=0
 typeset -gi _zshrinkwrap_pushed=0
 typeset -gi _zshrinkwrap_timer_fd=-1
+typeset -gi _zshrinkwrap_tmux_waits=0
 typeset -gi _zshrinkwrap_reordered=0
 typeset -gi _zshrinkwrap_saved_cursor=0
 typeset -gF _zshrinkwrap_deadline=0.0
@@ -144,6 +145,23 @@ _zshrinkwrap_timer_ready() {
   fi
 
   (( _zshrinkwrap_active )) || return 0
+
+  # tmux reflows its pane on every resize but signals the shell only now and
+  # then, so COLUMNS can lag behind. Wait for the pending SIGWINCH instead, but
+  # not forever: zsh nested in a pane (eg: an editor terminal) never matches.
+  if [[ -n $TMUX ]] && (( _zshrinkwrap_tmux_waits < 5 )); then
+    local width
+    local -a target
+    [[ -n $TMUX_PANE ]] && target=( -t $TMUX_PANE )
+    width=$(\tmux display-message -p $target '#{pane_width}' 2>/dev/null)
+    if [[ -n $width && $width != ${COLUMNS:-80} ]]; then
+      (( _zshrinkwrap_tmux_waits++ ))
+      _zshrinkwrap_style restore-delay
+      _zshrinkwrap_start_timer $REPLY
+      return 0
+    fi
+  fi
+  _zshrinkwrap_tmux_waits=0
   _zshrinkwrap_split_redraw
 }
 
@@ -173,6 +191,7 @@ TRAPWINCH() {
 
   _zshrinkwrap_strategy
   if [[ $REPLY != none ]] && zle 2>/dev/null; then
+    _zshrinkwrap_tmux_waits=0
     _zshrinkwrap_adjust
     _zshrinkwrap_style restore-delay
     restore_delay=$REPLY

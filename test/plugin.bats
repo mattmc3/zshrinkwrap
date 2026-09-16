@@ -503,6 +503,92 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
+@test "settle waits while tmux has a pending resize" {
+  run zsh -fc '
+    source "$PLUGIN_PATH"
+    TMUX=/tmp/tmux-test,1,0
+    COLUMNS=80
+    TMUX_PANE=%3
+    tmux() { [[ $3 == -t && $4 == %3 ]] && print 100 }
+    zle() { return 0 }
+    _zshrinkwrap_split_redraw() { print redraw }
+    _zshrinkwrap_start_timer() { print rearm }
+
+    exec {fd}< /dev/null
+    _zshrinkwrap_timer_fd=$fd
+    _zshrinkwrap_active=1
+    _zshrinkwrap_deadline=0
+    out=$(_zshrinkwrap_timer_ready $fd)
+    [[ $out == rearm ]] || { print -r -- "$out"; exit 1 }
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "settle stops waiting on tmux after a few tries" {
+  run zsh -fc '
+    source "$PLUGIN_PATH"
+    TMUX=/tmp/tmux-test,1,0
+    COLUMNS=80
+    tmux() { print 100 }
+    zle() { return 0 }
+    _zshrinkwrap_split_redraw() { print redraw }
+    _zshrinkwrap_start_timer() { print rearm }
+
+    outs=()
+    for i in {1..10}; do
+      exec {fd}< /dev/null
+      _zshrinkwrap_timer_fd=$fd
+      _zshrinkwrap_active=1
+      _zshrinkwrap_deadline=0
+      _zshrinkwrap_timer_ready $fd >$TMPPREFIX.out
+      outs+=( "$(<$TMPPREFIX.out)" )
+      [[ ${outs[-1]} == redraw ]] && break
+    done
+    rm -f $TMPPREFIX.out
+    [[ ${outs[-1]} == redraw ]] || { print -r -- "$outs"; exit 1 }
+    (( $#outs > 1 )) || exit 2
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "a new resize resets the tmux wait count" {
+  run zsh -fc '
+    source "$PLUGIN_PATH"
+    zle() { return 0 }
+    _zshrinkwrap_adjust() { : }
+    _zshrinkwrap_start_timer() { : }
+    _zshrinkwrap_tmux_waits=5
+
+    TRAPWINCH
+    (( _zshrinkwrap_tmux_waits == 0 ))
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "settle redraws once tmux agrees on the width" {
+  run zsh -fc '
+    source "$PLUGIN_PATH"
+    TMUX=/tmp/tmux-test,1,0
+    COLUMNS=80
+    tmux() { print 80 }
+    zle() { return 0 }
+    _zshrinkwrap_split_redraw() { print redraw }
+    _zshrinkwrap_start_timer() { print rearm }
+
+    exec {fd}< /dev/null
+    _zshrinkwrap_timer_fd=$fd
+    _zshrinkwrap_active=1
+    _zshrinkwrap_deadline=0
+    out=$(_zshrinkwrap_timer_ready $fd)
+    [[ $out == redraw ]] || { print -r -- "$out"; exit 1 }
+  '
+
+  [ "$status" -eq 0 ]
+}
+
 @test "restore cancels a pending timer" {
   run zsh -fc '
     source "$PLUGIN_PATH"

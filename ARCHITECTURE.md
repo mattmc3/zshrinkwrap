@@ -64,6 +64,7 @@ zstyle ':zshrinkwrap:resize' strategy none|split
 | Apple Terminal | `split` | Verified with the split probe; plugin not yet exercised in a real shell |
 | WezTerm | `split` | Verified with the split probe and the real plugin with starship, including a long command |
 | iTerm2, with or without shell integration | `split` | Marks probes (v14 and v17 integration) staircase; split probe and plugin with v17 integration clean at an empty prompt |
+| tmux | `split` | Real plugin in tmux 3.7 driven by script: clean at an empty prompt with and without pauses; a typed command that wraps can leave a stale row |
 | Ghostty or kitty without integration, others | `split` | Default, not verified |
 
 ### `none`
@@ -113,7 +114,11 @@ wrap it, so its position no longer depends on the width.
 
 **Settle.** Runs after `restore-delay` seconds (default 0.20) with no
 `SIGWINCH`. A `sleep` subprocess fd is watched with `zle -F -w`, and the
-handler `_zshrinkwrap_timer_ready` is a widget. `_zshrinkwrap_split_redraw`:
+handler `_zshrinkwrap_timer_ready` is a widget. Inside tmux it first asks tmux
+for `pane_width` and waits longer if that differs from `COLUMNS`, because a
+`SIGWINCH` is still on its way. It gives up after 5 waits, since zsh nested
+inside a pane (eg: an editor's terminal) never matches the pane width.
+`_zshrinkwrap_split_redraw`:
 
 1. The collapsed input line is on the cursor row. Nothing else depends on
    where the terminal moved things.
@@ -174,7 +179,7 @@ Everything lives in `zshrinkwrap.plugin.zsh`.
 | `_zshrinkwrap_strategy` | Pick `none` or `split` |
 | `TRAPWINCH` | Chain any previous trap, then adjust and start the settle timer |
 | `_zshrinkwrap_adjust` | Save and collapse prompts, stash the command |
-| `_zshrinkwrap_start_timer`, `_zshrinkwrap_timer_ready`, `_zshrinkwrap_cancel_timer` | Debounced settle timer on a `sleep` fd |
+| `_zshrinkwrap_start_timer`, `_zshrinkwrap_timer_ready`, `_zshrinkwrap_cancel_timer` | Debounced settle timer on a `sleep` fd; in tmux, waits (up to 5 times) until `pane_width` matches `COLUMNS` |
 | `_zshrinkwrap_restore` | Restore prompts, command, cursor, highlighting (also a precmd hook) |
 | `_zshrinkwrap_split_precmd`, `_zshrinkwrap_split_print` | Print upper prompt lines, hand zle the last line, wrap `RPROMPT` |
 | `_zshrinkwrap_split_preexec` | Give the theme its prompts back before a command |
@@ -268,7 +273,13 @@ Corrections to earlier beliefs:
   VS Code.
 - **Top of screen.** If the upper prompt lines scroll above the visible area
   during a resize, the cursor-up at settle stops at the top and can leave rows
-  behind.
+  behind in scrollback. tmux pushes rewrapped rows into history aggressively,
+  so this shows up there when the prompt is near the top of a pane.
+- **tmux notifies late.** tmux reflows its pane on every resize but sends
+  `SIGWINCH` (and updates the pty size) only now and then. At settle the plugin
+  asks tmux for `pane_width` and waits (up to 5 times) if it differs from
+  `COLUMNS`. The first `SIGWINCH` redraw still happens at a stale width, so a
+  command that wraps when a resize starts usually leaves a stale row in tmux.
 - **Unverified terminals** (Ghostty or kitty without integration,
   Alacritty, others) get `split` by default. Terminals that truncate instead of
   rewrapping need `strategy none`.
@@ -318,6 +329,16 @@ Layouts come from `common.zsh`:
    If the terminal truncates instead of rewrapping, it needs `none`.
 3. **Confirm with the real plugin** and a real theme before calling it done.
 4. **Explain failures** with `decsc.zsh` if needed.
+
+### tmux (scripted)
+
+tmux can be driven without a person: start a detached session on a private
+socket (`tmux -L name new-session -d -x 122 -y 30 'zsh -f -i'`), type with
+`send-keys -l`, resize with `resize-window -x`, and read the result with
+`capture-pane -p -J -S -` (include scrollback). Run cases one at a time;
+parallel runs add enough CPU lag to cause false failures. Start from a prompt
+near the bottom of the pane (eg: run `seq 60` first), since a prompt near the
+top hits the scrollback limitation above.
 
 ### Headless xterm.js harness (not in the repo)
 
