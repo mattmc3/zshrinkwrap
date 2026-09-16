@@ -12,6 +12,16 @@ Many terminals reflow visible text before Zsh handles `SIGWINCH`. Zsh can then
 redraw its prompt from the wrong screen position, leaving duplicated or damaged
 prompt lines. zshrinkwrap picks a strategy for the terminal it runs in.
 
+## Demo
+
+Resizing Apple Terminal with a powerlevel10k prompt, without zshrinkwrap:
+
+![Resizing without zshrinkwrap leaves copies of the prompt](https://github.com/mattmc3/zshrinkwrap/blob/assets/resizing-artifacts.gif?raw=true)
+
+The same terminal and prompt with zshrinkwrap:
+
+![Resizing with zshrinkwrap keeps a single clean prompt](https://github.com/mattmc3/zshrinkwrap/blob/assets/zshrinkwrap-demo.gif?raw=true)
+
 ## How cleanup works
 
 The damage comes from rows between the top of the prompt and the cursor
