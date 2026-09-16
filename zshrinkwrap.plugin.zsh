@@ -32,6 +32,7 @@ typeset -g _zshrinkwrap_rprompt_set
 typeset -ga _zshrinkwrap_upper_widths=()
 typeset -ga _zshrinkwrap_saved_highlight=()
 typeset -g _zshrinkwrap_saved_postdisplay
+typeset -g _zshrinkwrap_dir=${${(%):-%x}:A:h}
 
 if (( $+functions[TRAPWINCH] && ! $+functions[_zshrinkwrap_previous_trapwinch] )); then
   functions[_zshrinkwrap_previous_trapwinch]=$functions[TRAPWINCH]
@@ -239,6 +240,8 @@ _zshrinkwrap_display_width() {
 
   line=${line//$'\e'\[[0-?]#[ -\/]#[@-~]/}
   line=${line//$'\e'\][^$'\a'$'\e']#($'\a'|$'\e'\\)/}
+  line=${line//$'\e'[\(\)*+][0-9A-Za-z]/}
+  line=${line//$'\e'[0-9@-Z\\^_]/}
   typeset -g REPLY=${(m)#line}
 }
 
@@ -280,6 +283,14 @@ _zshrinkwrap_split_precmd() {
   _zshrinkwrap_strategy
   [[ $REPLY == split ]] || return 0
 
+  # powerlevel10k is split through its own hooks, in zshrinkwrap.p10k.zsh.
+  if (( $+functions[_p9k_precmd] )); then
+    (( $+functions[_zshrinkwrap_p10k_install] )) ||
+      source $_zshrinkwrap_dir/zshrinkwrap.p10k.zsh
+    _zshrinkwrap_p10k_install
+    return 0
+  fi
+
   # Integrations like wezterm.sh wrap PROMPT at precmd and restore it in
   # preexec. Split last and restore first so each sees its own prompt. If
   # another hook ran after us, reorder and skip splitting once. Only once, so
@@ -297,23 +308,27 @@ _zshrinkwrap_split_precmd() {
   if [[ -z $_zshrinkwrap_split_set || $PROMPT != $_zshrinkwrap_split_set ]]; then
     _zshrinkwrap_split_orig=$PROMPT
   fi
+  _zshrinkwrap_wrap_rprompt
+  _zshrinkwrap_split_print
+}
+
+# Zsh reaches the right prompt with a cursor move that stops at the edge, but
+# its text autowraps if the terminal already shrank, dropping the cursor a
+# row. With autowrap off it overwrites the last column instead.
+_zshrinkwrap_wrap_rprompt() {
   if [[ -z $_zshrinkwrap_rprompt_set || $RPROMPT != $_zshrinkwrap_rprompt_set ]]; then
     _zshrinkwrap_rprompt_orig=$RPROMPT
   fi
-
-  # Zsh reaches the right prompt with a cursor move that stops at the edge,
-  # but its text autowraps if the terminal already shrank, dropping the
-  # cursor a row. With autowrap off it overwrites the last column instead.
   _zshrinkwrap_rprompt_set=
   if [[ -n $_zshrinkwrap_rprompt_orig ]]; then
     _zshrinkwrap_rprompt_set=$'%{\e[?7l%}'$_zshrinkwrap_rprompt_orig$'%{\e[?7h%}'
     RPROMPT=$_zshrinkwrap_rprompt_set
   fi
-  _zshrinkwrap_split_print
 }
 
 # Give other hooks and the running command the prompt the theme set.
 _zshrinkwrap_split_preexec() {
+  (( $+functions[_zshrinkwrap_p10k_show] )) && _zshrinkwrap_p10k_show
   if [[ -n $_zshrinkwrap_split_set && $PROMPT == $_zshrinkwrap_split_set ]]; then
     PROMPT=$_zshrinkwrap_split_orig
   fi
@@ -337,7 +352,11 @@ _zshrinkwrap_split_redraw() {
   done
   (( rows > 0 )) && print -rn -- $'\e['$rows'A'
   print -rn -- $'\r\e[0J'
-  [[ $PROMPT == $_zshrinkwrap_split_set ]] && _zshrinkwrap_split_print
+  if (( ${_zshrinkwrap_p10k_hidden:-0} )); then
+    _zshrinkwrap_p10k_print
+  elif [[ $PROMPT == $_zshrinkwrap_split_set ]]; then
+    _zshrinkwrap_split_print
+  fi
   zle reset-prompt
 }
 

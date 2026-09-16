@@ -28,6 +28,11 @@ using the old height and redraws from the wrong row.
   lines are measured up from the cursor row at the final width, cleared, and
   printed again with the full prompt and command.
 
+Prompt themes that redraw the prompt themselves need care. powerlevel10k is
+detected and handled through its own hooks, so its transient prompt and async
+segments keep working. Other themes that rely on `zle reset-prompt` to redraw
+multi-line prompts may show stale upper lines until the next prompt.
+
 Known limits of the split strategy: a very fast first resize step can still
 leave one stale row when zsh's output lags behind the terminal, and upper
 prompt lines are not refreshed by async theme updates or `reset-prompt` until

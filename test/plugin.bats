@@ -705,6 +705,112 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
+@test "loads the p10k adapter only when p10k is detected" {
+  run zsh -fc '
+    source "$PLUGIN_PATH"
+    _zshrinkwrap_split_precmd >/dev/null
+    (( ! $+functions[_zshrinkwrap_p10k_install] )) || exit 1
+
+    _p9k_precmd() { : }
+    _zshrinkwrap_split_precmd >/dev/null
+    (( $+functions[_zshrinkwrap_p10k_install] )) || exit 2
+    [[ $functions[_p9k_precmd] == *_zshrinkwrap_p10k_after_precmd* ]] || exit 3
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "p10k upper lines hide through its template, not PROMPT" {
+  run zsh -fc '
+    source "$PLUGIN_PATH"
+    source "${PLUGIN_PATH:h}/zshrinkwrap.p10k.zsh"
+    # Stand-in for p10k: its template hides a line when _p9k__<n> is set.
+    setopt prompt_subst
+    _p9k_precmd() { : }
+    _p9k_line_segments_left=( a b )
+    nl=$'"'"'\n'"'"'
+    PROMPT='"'"'${_p9k__1-top${nl}}${_p9k__2-> }'"'"'
+    template=$PROMPT
+
+    _zshrinkwrap_p10k_upper_text
+    [[ $REPLY == top ]] || { print -r -- "upper=${(q+)REPLY}"; exit 1 }
+    _zshrinkwrap_p10k_hide
+    [[ ${(%%)PROMPT} == "> " && $PROMPT == $template ]] || exit 2
+    _zshrinkwrap_p10k_show
+    [[ ${(%%)PROMPT} == $'"'"'top\n> '"'"' ]] || exit 3
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "p10k newline and cursor up pair does not count as a line" {
+  run zsh -fc '
+    source "$PLUGIN_PATH"
+    source "${PLUGIN_PATH:h}/zshrinkwrap.p10k.zsh"
+    setopt prompt_subst
+    _p9k_line_segments_left=( a b )
+    PROMPT=$'"'"'x\n\eMtop\n> '"'"'
+    _zshrinkwrap_p10k_upper_text
+    [[ $REPLY == xtop ]] || exit 1
+
+    PROMPT=$'"'"'x\n\e[Atop\n> '"'"'
+    _zshrinkwrap_p10k_upper_text
+    [[ $REPLY == xtop ]] || exit 2
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "width ignores two character escape sequences" {
+  run zsh -fc '
+    source "$PLUGIN_PATH"
+    _zshrinkwrap_display_width $'"'"'\e[0mab\eMc\e(Bd\e7e'"'"'
+    [[ $REPLY == 5 ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "p10k split prints upper lines and skips a line the user hid" {
+  run zsh -fc '
+    source "$PLUGIN_PATH"
+    source "${PLUGIN_PATH:h}/zshrinkwrap.p10k.zsh"
+    # Stand-in for p10k: its template hides a line when _p9k__<n> is set.
+    setopt prompt_subst
+    _p9k_precmd() { : }
+    _p9k_line_segments_left=( a b )
+    nl=$'"'"'\n'"'"'
+    PROMPT='"'"'${_p9k__1-top${nl}}${_p9k__2-> }'"'"'
+
+    out=$(_zshrinkwrap_p10k_after_precmd; print -rn -- "|$_zshrinkwrap_p10k_pending|${(%%)PROMPT}")
+    [[ $out == $'"'"'top\n|1|> '"'"' ]] || { print -r -- ${(q+)out}; exit 1 }
+
+    _p9k__1=
+    out=$(_zshrinkwrap_p10k_after_precmd)
+    [[ -z $out ]] || exit 2
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "p10k transient prompt deletes the printed upper lines" {
+  run zsh -fc '
+    source "$PLUGIN_PATH"
+    source "${PLUGIN_PATH:h}/zshrinkwrap.p10k.zsh"
+    COLUMNS=80; LINES=24; CURSOR=0
+    _p9k_transient_prompt="> "
+    _POWERLEVEL9K_TRANSIENT_PROMPT=always
+    _zshrinkwrap_p10k_orig__p9k_on_widget_zle-line-finish() { : }
+    _zshrinkwrap_p10k_hidden=1
+    _zshrinkwrap_upper_widths=( 79 )
+
+    _zshrinkwrap_p10k_line_finish | od -An -c | tr -d " \n"
+  '
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "0337033[1A\\r033[1M0338033[1A" ]
+}
+
 @test "restore cancels a pending timer" {
   run zsh -fc '
     source "$PLUGIN_PATH"

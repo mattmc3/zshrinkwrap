@@ -165,6 +165,44 @@ Why each piece exists:
 - **Collapse instead of `singlelinezle`.** Single-line editing still draws the
   command at zsh's idea of the width, which can wrap when output lags.
 
+### powerlevel10k
+
+Replacing `PROMPT` breaks p10k. It builds `PROMPT` as a template that zsh
+re-expands on every redraw, `${_p9k__1-<line 1>}${_p9k__2-<line 2>}`, and both
+its transient prompt and its async segments (eg: git status) redraw through
+`zle .reset-prompt`. It also moves `_p9k_precmd` last on every prompt. So when
+`_p9k_precmd` exists, the generic split precmd sources `zshrinkwrap.p10k.zsh`
+and works through p10k instead:
+
+- **Hide, don't replace.** At the end of `_p9k_precmd` (wrapped), the upper
+  lines are expanded, printed, and hidden by setting `_p9k__<n>` empty, the same
+  mechanism as `p10k display <n>=hide`. `PROMPT` stays p10k's live template, and
+  zle only ever draws the one-line input prompt. A line the user already hid
+  is left alone.
+- **Check again at `zle-line-init`.** p10k finishes some segments on its first
+  expansion under zle, so the lines printed at precmd can be stale. At
+  `zle-line-init` they are re-expanded and repainted in place if they changed.
+  Whether zle has drawn yet at that point varies with the user's other plugins,
+  but the cursor is on the input line either way.
+- **Async updates.** `_p9k_reset_prompt` is wrapped to repaint the upper lines
+  in place, between DECSC and DECRC, when their expansion changed.
+- **Transient prompt.** `_p9k_on_widget_zle-line-finish` is wrapped. When p10k
+  applies its transient prompt, the plugin deletes the upper rows with DL
+  (`\e[<n>M`) and moves the cursor up with the content.
+- **Cursor-up pair.** p10k starts line 1 with a newline followed by a cursor up
+  (`\e[A`, or `\eM` depending on terminfo), which nets no row. It is removed
+  before splitting and measuring; otherwise the upper lines count one row too
+  many and the transient delete eats a line of history.
+
+Verified by running the user's real zsh config (p10k, direnv, histdb, and
+others) in scripted tmux: commands with the transient prompt, dragging,
+pauses, and a typed command, all matching or better than p10k alone.
+
+The wrappers use p10k's private names (`_p9k_precmd`, `_p9k_reset_prompt`,
+`_p9k_on_widget_zle-line-finish`, `_p9k__<n>`, `_p9k_line_segments_left`,
+`_p9k_transient_prompt`). A p10k release that renames them would drop this
+path back to generic split, which breaks p10k's transient prompt again.
+
 ### Removed: `estimate`
 
 The original approach. On each `SIGWINCH` it computed the rows the prompt and
@@ -181,7 +219,8 @@ already correct.
 
 ## Code map
 
-Everything lives in `zshrinkwrap.plugin.zsh`.
+Everything lives in `zshrinkwrap.plugin.zsh`, except the powerlevel10k adapter
+in `zshrinkwrap.p10k.zsh`, which is sourced only when p10k is detected.
 
 | Function | Role |
 |---|---|
@@ -196,6 +235,7 @@ Everything lives in `zshrinkwrap.plugin.zsh`.
 | `_zshrinkwrap_split_preexec` | Give the theme its prompts back before a command |
 | `_zshrinkwrap_split_redraw` | Settle-time climb, clear, and reprint for `split` |
 | `_zshrinkwrap_display_width` | Width of a line with escape sequences removed |
+| `_zshrinkwrap_p10k_*` (in `zshrinkwrap.p10k.zsh`) | powerlevel10k adapter: wrap its precmd, reset, and line-finish; hide upper lines via `_p9k__<n>` |
 
 Hooks:
 
