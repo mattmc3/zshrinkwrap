@@ -1,5 +1,6 @@
 # Probe: does the terminal clear a marked prompt on resize so zsh can redraw it?
-# Usage: start `zsh -f`, then: source test/probe/marks.zsh [133|633|none] [oneline|twoline]
+# Usage: start `zsh -f`, then:
+#   source test/probe/marks.zsh [133|633|none] [oneline|twoline|tworight]
 # Resize back and forth a few times at the prompt, with and without a long
 # command typed, and note whether stale prompt lines pile up.
 

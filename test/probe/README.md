@@ -1,16 +1,13 @@
 # Resize probes
 
-Small manual scripts for finding out how each terminal behaves on resize.
-Their results decide which strategy zshrinkwrap uses per terminal. Run them
-directly in the terminal under test, not inside tmux, since tmux does its own
-reflow.
-
-Terminals to cover: VS Code, iTerm2, WezTerm, Ghostty, Apple Terminal.
+Small manual scripts for finding out how a terminal behaves on resize. Their
+results decide which strategy zshrinkwrap should use there. Run them directly
+in the terminal under test, not inside tmux, since tmux does its own reflow.
+See ARCHITECTURE.md for how to add a terminal.
 
 ## Long command
 
-Here's an example long command for copy/paste that can be used when doing resize tests
-as a half-finished command.
+An example long command to paste and leave unrun while resizing:
 
 ```sh
 echo The quick brown fox jumps over the lazy dog. Now is the time for all good men to come to the aid of their country.
@@ -18,24 +15,25 @@ echo The quick brown fox jumps over the lazy dog. Now is the time for all good m
 
 ## decsc.zsh
 
-Does the saved cursor (DECSC/DECRC) move along with reflowed text? If it does,
-the prompt origin can be saved at precmd and found again after any resize.
+Does the saved cursor (DECSC/DECRC) move along with reflowed text?
 
 ```sh
-zsh test/probe/decsc.zsh
+zsh test/probe/decsc.zsh long   # or short, cursor
 ```
 
-Shrink the window, press Enter, widen it, press Enter. Report whether `[1]`
-and `[2]` landed on the `A> anchor` line.
+Shrink the window, press Enter, widen it, press Enter. A saved cursor that
+follows reflow puts `[1]` at the start of the `A> anchor` line and `[2]` four
+columns in; note the row and column where each lands.
 
-Report the column too: a correct restore puts `[1]` at the start of the line.
-Run `zsh test/probe/decsc.zsh short` to keep the anchor line itself from
-wrapping, which separates reflow above the anchor from reflow of the anchor.
+- `long`: the anchor line fills the width, so it wraps when shrinking.
+- `short`: the anchor line never wraps, which separates reflow above the anchor
+  from reflow of the anchor line itself.
+- `cursor`: the cursor stays on the long anchor line, like a right prompt.
 
 ## split.zsh
 
-Does printing the upper prompt lines outside zle make resize race-free? zle
-only draws the last prompt line. While resizing, that line collapses to a short
+Does printing the upper prompt lines outside zle keep the prompt clean through
+a resize? zle only draws the last prompt line. While resizing, that line collapses to a short
 prompt with the command stashed, so it never wraps. Once resizing settles, the
 upper lines are cleared and reprinted at the new width, measured up from the
 input line.
@@ -47,15 +45,14 @@ source test/probe/split.zsh tworight cursor   # layout: oneline|twoline|tworight
 
 The anchor argument picks how the input line is found once resizing settles:
 
-- `cursor`: the cursor row. Works whether or not the terminal rewraps the
-  cursor's own line.
-- `decsc`: a cursor saved at precmd. Only safe where the terminal leaves the
-  cursor's own line alone on resize (VS Code), but immune to zsh output lag.
+- `cursor`: the cursor row. This is what the plugin uses.
+- `decsc`: a cursor saved at precmd. Kept for comparison; it left stale rows
+  in real VS Code and fails where the terminal rewraps the cursor's own line.
 
-Resize slowly and quickly, with no command, a short command, and a command long
-enough to wrap before you start. Run a few commands first so there is history
-above the prompt. Report whether the prompt ends clean, whether stale prompt
-lines remain, and whether any history was eaten.
+Run a few commands first so there is history above the prompt, then resize
+slowly and quickly, with no command, a short command, and a command long
+enough to wrap before you start. Check that the prompt ends clean, that no
+stale prompt lines remain, and that no history was erased.
 
 ## marks.zsh
 
@@ -69,19 +66,6 @@ source test/probe/marks.zsh 133 twoline   # marks: 133|633|none
 
 Start a fresh `zsh -f` for each run. Resize back and forth several times at
 the prompt without pressing anything, with and without a long command typed.
-Report `clean` if a single prompt remains, or `staircase` if stale prompt
+The result is clean if a single prompt remains, or a staircase if stale prompt
 fragments pile up above it. Run the same resize pattern with `none` as the
 baseline: the marks only matter if `none` makes a staircase and `133` does not.
-
-## Reporting
-
-Paste the `terminal:` and `TERM=` lines each probe prints, then one line per
-probe, eg:
-
-```
-terminal: ghostty 1.3.0
-TERM=xterm-ghostty zsh=5.9 size=120x40
-decsc: [1] on anchor, [2] on anchor
-anchor twoline: clean, no history lost
-marks 133 twoline: clean / none twoline: staircase
-```

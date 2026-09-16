@@ -1,5 +1,5 @@
 #!/usr/bin/env zsh
-# Probe: does the terminal move the saved cursor (DECSC) along with reflowed text?
+# Probe: does the terminal move the saved cursor (DECSC) with reflowed text?
 # Usage: zsh test/probe/decsc.zsh [long|short|cursor]
 # `short` keeps the anchor line itself from wrapping when the window shrinks.
 # `cursor` leaves the cursor on the long anchor line, like a right prompt.

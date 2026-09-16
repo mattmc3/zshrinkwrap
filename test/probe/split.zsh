@@ -1,10 +1,11 @@
-# Probe: does printing the upper prompt lines outside zle make resize race-free?
-# Usage: start `zsh -f`, then: source test/probe/split.zsh [oneline|twoline|tworight] [cursor|decsc]
+# Probe: does printing upper prompt lines outside zle survive a resize cleanly?
+# Usage: start `zsh -f`, then:
+#   source test/probe/split.zsh [oneline|twoline|tworight] [cursor|decsc]
 # precmd prints every prompt line but the last, so zle only draws one line.
 # Once resizing settles, the upper lines are cleared and reprinted at the new
 # width, measured up from the input line. `cursor` finds the input line from
-# the cursor row, which the collapsed prompt keeps on it while resizing. `decsc` finds
-# it from a cursor saved at precmd.
+# the cursor row, where the collapsed prompt stays while resizing. `decsc`
+# finds it from a cursor saved at precmd.
 
 source ${${(%):-%x}:A:h}/common.zsh
 
