@@ -9,7 +9,8 @@ Terminals to cover: VS Code, iTerm2, WezTerm, Ghostty, Apple Terminal.
 
 ## Long command
 
-Copy/paste this:
+Here's an example long command for copy/paste that can be used when doing resize tests
+as a half-finished command.
 
 ```sh
 echo The quick brown fox jumps over the lazy dog. Now is the time for all good men to come to the aid of their country.
