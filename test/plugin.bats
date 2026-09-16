@@ -221,6 +221,34 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
+@test "split cooperates with a wrapper that restores without checking" {
+  run zsh -fc '
+    zstyle ":zshrinkwrap:resize" strategy split
+    # Like the iTerm2 integration, which restores PS1 in preexec unconditionally.
+    wrap_precmd() { saved=$PROMPT; PROMPT="<$PROMPT>" }
+    wrap_preexec() { PROMPT=$saved }
+    printed=$(mktemp)
+    trap "rm -f $printed" EXIT
+    cycle() {
+      local f
+      for f in $precmd_functions; do $f; done >>$printed
+      prompts+=( "$PROMPT" )
+      for f in $preexec_functions; do $f; done
+    }
+    source "$PLUGIN_PATH"
+    precmd_functions+=( wrap_precmd )
+    preexec_functions+=( wrap_preexec )
+    PROMPT=$'"'"'top\n> '"'"'
+
+    cycle; cycle; cycle
+    [[ $PROMPT == $'"'"'top\n> '"'"' ]] || exit 1
+    [[ $(grep -c "top" $printed) -ge 2 ]] || exit 2
+    [[ ${prompts[-1]} != *"<<"* ]] || exit 3
+  '
+
+  [ "$status" -eq 0 ]
+}
+
 @test "split redraw climbs the upper lines from the cursor row and clears" {
   run zsh -fc '
     zstyle ":zshrinkwrap:resize" strategy split

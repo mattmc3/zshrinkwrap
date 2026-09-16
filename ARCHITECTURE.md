@@ -63,7 +63,8 @@ zstyle ':zshrinkwrap:resize' strategy none|split
 | VS Code | `split` | Verified with the real plugin, starship, and zsh-patina |
 | Apple Terminal | `split` | Verified with the split probe; plugin not yet exercised in a real shell |
 | WezTerm | `split` | Verified with the split probe and the real plugin with starship, including a long command |
-| Ghostty or kitty without integration, iTerm2, others | `split` | Default, not verified |
+| iTerm2, with or without shell integration | `split` | Marks probes (v14 and v17 integration) staircase; split probe and plugin with v17 integration clean at an empty prompt |
+| Ghostty or kitty without integration, others | `split` | Default, not verified |
 
 ### `none`
 
@@ -187,13 +188,13 @@ Hooks:
 
 Under `split`, `_zshrinkwrap_split_precmd` keeps itself **last** in
 `precmd_functions` and `_zshrinkwrap_split_preexec` **first** in
-`preexec_functions`. Shell integrations such as `wezterm.sh` wrap `PROMPT` in
-OSC 133 marks at precmd and restore their saved copy in preexec, only if
-`PROMPT` still matches what they set. Without this ordering, the marks pile up
-every prompt, or the integration saves the split one-line prompt and later
-restores it as the original, losing the upper lines. If another hook ran after
-the split precmd, it reorders the hooks and skips splitting for that one
-prompt.
+`preexec_functions`. Shell integrations such as `wezterm.sh` and iTerm2's
+wrap `PROMPT` in OSC 133 marks at precmd and restore their saved copy in
+preexec (`wezterm.sh` only if `PROMPT` still matches what it set; iTerm2
+unconditionally). Without this ordering, the marks pile up every prompt, or
+the integration saves the split one-line prompt and later restores it as the
+original, losing the upper lines. If another hook ran after the split precmd,
+it reorders the hooks and skips splitting for that one prompt.
 
 Sourcing the plugin again restores state and any previous `TRAPWINCH` before
 redefining everything.
@@ -230,7 +231,7 @@ In roughly chronological order.
 | Hide `RPROMPT`, clear the cursor row, `reset-prompt` | Staircase with long commands; fragments left above |
 | `estimate`: climb `(promptwidth + CURSOR) / COLUMNS`, clear, redraw | Ate history: moved twice, once by the plugin and once by zle's own climb |
 | `estimate`: climb only the delta between old and new row counts | Best of the estimate line. Clean in the tmux sim except one stale pair when a step hit a redraw whose wrapped rows had become separate lines |
-| OSC 133 prompt marks | Ghostty and kitty clear marked prompts: adopted as `none`. VS Code and WezTerm ignore them |
+| OSC 133 prompt marks | Ghostty and kitty clear marked prompts: adopted as `none`. VS Code, WezTerm, and iTerm2 ignore them |
 | DECSC anchor at precmd, redraw from it on every `SIGWINCH` | Fixed some VS Code cases. Wrong when the anchor's own line wraps, and parked one row too low |
 | DECSC anchor with a correction for wrapped prompt lines, per `SIGWINCH` | Clean on slow resizes. Under output lag the correction lands at the wrong width and eats history (harness: 4/10 at 15ms) |
 | Correct once, then collapse the prompt until settle | Better (7/10 at 15ms). Still left a stale partial line in real VS Code |
@@ -266,7 +267,7 @@ Corrections to earlier beliefs:
 - **Top of screen.** If the upper prompt lines scroll above the visible area
   during a resize, the cursor-up at settle stops at the top and can leave rows
   behind.
-- **Unverified terminals** (iTerm2, Ghostty or kitty without integration,
+- **Unverified terminals** (Ghostty or kitty without integration,
   Alacritty, others) get `split` by default. Terminals that truncate instead of
   rewrapping need `strategy none`.
 
@@ -301,7 +302,7 @@ Layouts come from `common.zsh`:
 - `twoline`: the p10k repro, a full-width first line.
 - `tworight`: `twoline` plus a right prompt.
 
-### Adding a terminal (eg: iTerm2)
+### Adding a terminal (eg: Alacritty)
 
 1. **Check whether marks are enough.** From `zsh -f`, run
    `source test/probe/marks.zsh none twoline`, then `... 133 twoline`. If
