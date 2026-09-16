@@ -65,14 +65,25 @@ source /path/to/zshrinkwrap/zshrinkwrap.plugin.zsh
 
 ## Configure
 
-Styles are read each time they are used, so set them before or after sourcing
-the plugin:
+Styles use the context `:zshrinkwrap:resize:<terminal>`, where `<terminal>` is
+`$TERM_PROGRAM`, or `$TERM` when that is unset. Set a style for every terminal
+with `*`, and override it for one terminal by name; the most specific pattern
+wins:
 
 ```zsh
-zstyle ':zshrinkwrap:resize' symbol '%F{magenta}❯%f '
-zstyle ':zshrinkwrap:resize' restore-delay 0.20
-zstyle ':zshrinkwrap:resize' strategy split
+# All terminals
+zstyle ':zshrinkwrap:resize:*' symbol '%F{magenta}❯%f '
+zstyle ':zshrinkwrap:resize:*' restore-delay 0.20
+
+# One terminal
+zstyle ':zshrinkwrap:resize:tmux' restore-delay 0.40
+zstyle ':zshrinkwrap:resize:Apple_Terminal' strategy none
 ```
+
+To see the terminal name zshrinkwrap uses, run `echo ${TERM_PROGRAM:-$TERM}`.
+Common names are `vscode`, `Apple_Terminal`, `iTerm.app`, `WezTerm`, `ghostty`,
+`tmux`, and `xterm-kitty`. Styles are read each time they are used, so set
+them before or after sourcing the plugin.
 
 The `symbol` style is the short prompt shown while resizing. Keep it to one
 short line. It supports Zsh prompt escapes, including `%F{color}` and `%f`, and

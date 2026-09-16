@@ -20,8 +20,8 @@ setup() {
 
 @test "falls back to the default when a style is empty" {
   run zsh -fc '
-    zstyle ":zshrinkwrap:resize" symbol ""
-    zstyle ":zshrinkwrap:resize" restore-delay ""
+    zstyle ":zshrinkwrap:resize:*" symbol ""
+    zstyle ":zshrinkwrap:resize:*" restore-delay ""
     source "$PLUGIN_PATH"
     _zshrinkwrap_style symbol
     [[ $REPLY == "%F{magenta}%#%f " ]]
@@ -34,7 +34,7 @@ setup() {
 
 @test "supports prompt color escapes in symbol" {
   run zsh -fc '
-    zstyle ":zshrinkwrap:resize" symbol "%F{magenta}❯%f "
+    zstyle ":zshrinkwrap:resize:*" symbol "%F{magenta}❯%f "
     source "$PLUGIN_PATH"
     zle() { return 0 }
 
@@ -51,7 +51,7 @@ setup() {
 
 @test "split prints upper prompt lines and leaves zle the last line" {
   run zsh -fc '
-    zstyle ":zshrinkwrap:resize" strategy split
+    zstyle ":zshrinkwrap:resize:*" strategy split
     source "$PLUGIN_PATH"
     PROMPT=$'"'"'top %F{red}line%f\n> '"'"'
 
@@ -64,7 +64,7 @@ setup() {
 
 @test "split records display widths of upper prompt lines" {
   run zsh -fc '
-    zstyle ":zshrinkwrap:resize" strategy split
+    zstyle ":zshrinkwrap:resize:*" strategy split
     source "$PLUGIN_PATH"
     PROMPT=$'"'"'%F{red}abc%f\nde\n> '"'"'
 
@@ -77,7 +77,7 @@ setup() {
 
 @test "split leaves a single-line prompt alone" {
   run zsh -fc '
-    zstyle ":zshrinkwrap:resize" strategy split
+    zstyle ":zshrinkwrap:resize:*" strategy split
     source "$PLUGIN_PATH"
     PROMPT="%~ %# "
 
@@ -91,7 +91,7 @@ setup() {
 
 @test "split evaluates prompt_subst prompts before splitting" {
   run zsh -fc '
-    zstyle ":zshrinkwrap:resize" strategy split
+    zstyle ":zshrinkwrap:resize:*" strategy split
     source "$PLUGIN_PATH"
     setopt prompt_subst
     integer calls=0
@@ -107,7 +107,7 @@ setup() {
 
 @test "split gives the original prompt back before each command" {
   run zsh -fc '
-    zstyle ":zshrinkwrap:resize" strategy split
+    zstyle ":zshrinkwrap:resize:*" strategy split
     source "$PLUGIN_PATH"
     PROMPT=$'"'"'top\n> '"'"'
 
@@ -121,7 +121,7 @@ setup() {
 
 @test "split keeps the original prompt across prompts" {
   run zsh -fc '
-    zstyle ":zshrinkwrap:resize" strategy split
+    zstyle ":zshrinkwrap:resize:*" strategy split
     source "$PLUGIN_PATH"
     PROMPT=$'"'"'top\n> '"'"'
 
@@ -135,7 +135,7 @@ setup() {
 
 @test "split draws the right prompt with autowrap off" {
   run zsh -fc '
-    zstyle ":zshrinkwrap:resize" strategy split
+    zstyle ":zshrinkwrap:resize:*" strategy split
     source "$PLUGIN_PATH"
     PROMPT="> "
     RPROMPT="right"
@@ -153,7 +153,7 @@ setup() {
 
 @test "split leaves an empty right prompt alone" {
   run zsh -fc '
-    zstyle ":zshrinkwrap:resize" strategy split
+    zstyle ":zshrinkwrap:resize:*" strategy split
     source "$PLUGIN_PATH"
     PROMPT="> "
     RPROMPT=
@@ -167,7 +167,7 @@ setup() {
 
 @test "split cooperates with a prompt wrapper added before the plugin" {
   run zsh -fc '
-    zstyle ":zshrinkwrap:resize" strategy split
+    zstyle ":zshrinkwrap:resize:*" strategy split
     # Stand-in for integrations that wrap PROMPT at precmd and restore it
     # in preexec, like wezterm.sh.
     wrap_precmd() { saved=$PROMPT; PROMPT="<$PROMPT>"; check=$PROMPT }
@@ -196,7 +196,7 @@ setup() {
 
 @test "split cooperates with a prompt wrapper added after the plugin" {
   run zsh -fc '
-    zstyle ":zshrinkwrap:resize" strategy split
+    zstyle ":zshrinkwrap:resize:*" strategy split
     # Stand-in for integrations that wrap PROMPT at precmd and restore it
     # in preexec, like wezterm.sh.
     wrap_precmd() { saved=$PROMPT; PROMPT="<$PROMPT>"; check=$PROMPT }
@@ -225,7 +225,7 @@ setup() {
 
 @test "split cooperates with a wrapper that restores without checking" {
   run zsh -fc '
-    zstyle ":zshrinkwrap:resize" strategy split
+    zstyle ":zshrinkwrap:resize:*" strategy split
     # Like the iTerm2 integration, which restores PS1 in preexec unconditionally.
     wrap_precmd() { saved=$PROMPT; PROMPT="<$PROMPT>" }
     wrap_preexec() { PROMPT=$saved }
@@ -253,7 +253,7 @@ setup() {
 
 @test "split still splits beside a hook that insists on running last" {
   run zsh -fc '
-    zstyle ":zshrinkwrap:resize" strategy split
+    zstyle ":zshrinkwrap:resize:*" strategy split
     # Like Ghostty and kitty integrations, which move themselves last.
     last_precmd() {
       precmd_functions=( ${precmd_functions:#last_precmd} last_precmd )
@@ -279,7 +279,7 @@ setup() {
 
 @test "split redraw climbs the upper lines from the cursor row and clears" {
   run zsh -fc '
-    zstyle ":zshrinkwrap:resize" strategy split
+    zstyle ":zshrinkwrap:resize:*" strategy split
     source "$PLUGIN_PATH"
     PROMPT=$'"'"'0123456789\n> '"'"'
     zle() { return 0 }
@@ -366,7 +366,7 @@ setup() {
 @test "strategy style overrides terminal detection" {
   run zsh -fc '
     TERM_PROGRAM=vscode
-    zstyle ":zshrinkwrap:resize" strategy none
+    zstyle ":zshrinkwrap:resize:*" strategy none
     source "$PLUGIN_PATH"
     _zshrinkwrap_strategy
     [[ $REPLY == none ]]
@@ -375,9 +375,72 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
+@test "strategy can be set per terminal" {
+  run zsh -fc '
+    zstyle ":zshrinkwrap:resize:tmux" strategy none
+    source "$PLUGIN_PATH"
+
+    TERM_PROGRAM=tmux
+    _zshrinkwrap_strategy
+    [[ $REPLY == none ]] || exit 1
+    TERM_PROGRAM=vscode
+    _zshrinkwrap_strategy
+    [[ $REPLY == split ]] || exit 2
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "a terminal style overrides a wildcard style" {
+  run zsh -fc '
+    zstyle ":zshrinkwrap:resize:*" strategy none
+    zstyle ":zshrinkwrap:resize:vscode" strategy split
+    source "$PLUGIN_PATH"
+
+    TERM_PROGRAM=vscode
+    _zshrinkwrap_strategy
+    [[ $REPLY == split ]] || exit 1
+    TERM_PROGRAM=tmux
+    _zshrinkwrap_strategy
+    [[ $REPLY == none ]] || exit 2
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "terminal context falls back to TERM without TERM_PROGRAM" {
+  run zsh -fc '
+    zstyle ":zshrinkwrap:resize:xterm-kitty" strategy none
+    source "$PLUGIN_PATH"
+
+    TERM_PROGRAM=
+    TERM=xterm-kitty
+    _zshrinkwrap_strategy
+    [[ $REPLY == none ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "other styles can be set per terminal" {
+  run zsh -fc '
+    zstyle ":zshrinkwrap:resize:tmux" restore-delay 0.50
+    source "$PLUGIN_PATH"
+
+    TERM_PROGRAM=tmux
+    _zshrinkwrap_style restore-delay
+    [[ $REPLY == 0.50 ]] || exit 1
+    TERM_PROGRAM=vscode
+    _zshrinkwrap_style restore-delay
+    [[ $REPLY == 0.20 ]] || exit 2
+  '
+
+  [ "$status" -eq 0 ]
+}
+
 @test "none strategy leaves prompts and display alone on resize" {
   run zsh -fc '
-    zstyle ":zshrinkwrap:resize" strategy none
+    zstyle ":zshrinkwrap:resize:*" strategy none
     source "$PLUGIN_PATH"
     PROMPT="wide prompt > "
     RPROMPT="right prompt"

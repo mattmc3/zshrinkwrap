@@ -50,10 +50,12 @@ These shape every design decision.
 
 zshrinkwrap chooses a **strategy** in `_zshrinkwrap_strategy`: `none` where the
 terminal cleans up prompts itself, `split` everywhere else. Users can override
-it:
+it per terminal, since every style is looked up in the context
+`:zshrinkwrap:resize:${TERM_PROGRAM:-$TERM}` (`_zshrinkwrap_context`):
 
 ```zsh
-zstyle ':zshrinkwrap:resize' strategy none|split
+zstyle ':zshrinkwrap:resize:*' strategy split
+zstyle ':zshrinkwrap:resize:Apple_Terminal' strategy none
 ```
 
 | Terminal | Strategy | Status |
@@ -175,6 +177,7 @@ Everything lives in `zshrinkwrap.plugin.zsh`.
 
 | Function | Role |
 |---|---|
+| `_zshrinkwrap_context` | Build the zstyle context `:zshrinkwrap:resize:<terminal>` |
 | `_zshrinkwrap_style` | Read a zstyle, treating empty values as unset |
 | `_zshrinkwrap_strategy` | Pick `none` or `split` |
 | `TRAPWINCH` | Chain any previous trap, then adjust and start the settle timer |

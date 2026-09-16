@@ -41,13 +41,22 @@ typeset -gA _zshrinkwrap_defaults=(
   restore-delay '0.20'
 )
 
+# Styles are looked up in `:zshrinkwrap:resize:<terminal>`, so users can set
+# them per terminal or for all with `:zshrinkwrap:resize:*`.
+_zshrinkwrap_context() {
+  emulate -L zsh
+  local terminal=${TERM_PROGRAM:-${TERM:-unknown}}
+  typeset -g REPLY=:zshrinkwrap:resize:${terminal//:/_}
+}
+
 # An empty style counts as unset, so a blank value cannot leave the
 # prompt or the sleep interval with nothing usable.
 _zshrinkwrap_style() {
   emulate -L zsh
   local value
 
-  zstyle -s ':zshrinkwrap:resize' $1 value
+  _zshrinkwrap_context
+  zstyle -s $REPLY $1 value
   [[ -n $value ]] || value=${_zshrinkwrap_defaults[$1]}
   typeset -g REPLY=$value
 }
@@ -58,7 +67,8 @@ _zshrinkwrap_strategy() {
   emulate -L zsh
   local value
 
-  if zstyle -s ':zshrinkwrap:resize' strategy value && [[ -n $value ]]; then
+  _zshrinkwrap_context
+  if zstyle -s $REPLY strategy value && [[ -n $value ]]; then
     typeset -g REPLY=$value
     return 0
   fi
