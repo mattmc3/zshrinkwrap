@@ -196,6 +196,38 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
+@test "split draws the right prompt with autowrap off" {
+  run zsh -fc '
+    zstyle ":zshrinkwrap:resize" strategy split
+    source "$PLUGIN_PATH"
+    PROMPT="> "
+    RPROMPT="right"
+
+    _zshrinkwrap_split_precmd
+    [[ $RPROMPT == $'"'"'%{\e[?7l%}right%{\e[?7h%}'"'"' ]] || exit 1
+    _zshrinkwrap_split_precmd
+    [[ $RPROMPT == $'"'"'%{\e[?7l%}right%{\e[?7h%}'"'"' ]] || exit 2
+    _zshrinkwrap_split_preexec
+    [[ $RPROMPT == right ]] || exit 3
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "split leaves an empty right prompt alone" {
+  run zsh -fc '
+    zstyle ":zshrinkwrap:resize" strategy split
+    source "$PLUGIN_PATH"
+    PROMPT="> "
+    RPROMPT=
+
+    _zshrinkwrap_split_precmd
+    [[ -z $RPROMPT ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
 @test "split collapses both prompts on resize regardless of shrink styles" {
   run zsh -fc '
     zstyle ":zshrinkwrap:resize" strategy split
@@ -398,6 +430,31 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
+@test "keeps syntax highlighting across a stashed command" {
+  run zsh -fc '
+    zstyle ":zshrinkwrap:resize" shrink-lprompt yes
+    source "$PLUGIN_PATH"
+    BUFFER="echo hi"
+    CURSOR=7
+    region_highlight=( "0 4 fg=green" )
+    zle() {
+      case $1 in
+        push-line) _stash=$BUFFER; BUFFER=; region_highlight=() ;;
+        get-line) BUFFER=$_stash ;;
+      esac
+      return 0
+    }
+
+    _zshrinkwrap_adjust
+    [[ -z $BUFFER ]] || exit 1
+    _zshrinkwrap_restore
+    [[ $BUFFER == "echo hi" ]] || exit 2
+    [[ ${region_highlight[*]} == "0 4 fg=green" ]] || exit 3
+  '
+
+  [ "$status" -eq 0 ]
+}
+
 @test "restores prompt and editor mode" {
   run zsh -fc '
     unsetopt singlelinezle
@@ -462,6 +519,17 @@ setup() {
 
     exec {_zshrinkwrap_timer_fd}<&-
     [[ $timer_cancellations == 0 ]]
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "timer handler runs as a widget so zle state is live" {
+  run zsh -fc '
+    source "$PLUGIN_PATH"
+    zle() { [[ $1 == -F ]] && print -r -- "$*" }
+
+    _zshrinkwrap_start_timer 0.01 | grep -q -- "-F -w [0-9]* _zshrinkwrap_timer_ready"
   '
 
   [ "$status" -eq 0 ]

@@ -26,7 +26,10 @@ typeset -g _zshrinkwrap_saved_rprompt
 typeset -g _zshrinkwrap_split_orig
 typeset -g _zshrinkwrap_split_set
 typeset -g _zshrinkwrap_split_line
+typeset -g _zshrinkwrap_rprompt_orig
+typeset -g _zshrinkwrap_rprompt_set
 typeset -ga _zshrinkwrap_upper_widths=()
+typeset -ga _zshrinkwrap_saved_highlight=()
 
 if (( $+functions[TRAPWINCH] && ! $+functions[_zshrinkwrap_previous_trapwinch] )); then
   functions[_zshrinkwrap_previous_trapwinch]=$functions[TRAPWINCH]
@@ -101,6 +104,8 @@ _zshrinkwrap_restore() {
     zle get-line
     (( CURSOR = _zshrinkwrap_saved_cursor < $#BUFFER ?
                 _zshrinkwrap_saved_cursor : $#BUFFER ))
+    # Highlighters may not rerun for a line restored from a timer.
+    region_highlight=( "${_zshrinkwrap_saved_highlight[@]}" )
     _zshrinkwrap_pushed=0
   fi
 }
@@ -156,6 +161,7 @@ _zshrinkwrap_adjust() {
     # Split needs a short input line so no redraw while resizing can wrap.
     if [[ $strategy == split ]] || zstyle -t ':zshrinkwrap:resize' shrink-lprompt; then
       if [[ -n $BUFFER ]]; then
+        _zshrinkwrap_saved_highlight=( "${region_highlight[@]}" )
         zle push-line && _zshrinkwrap_pushed=1
       fi
       _zshrinkwrap_style symbol
@@ -204,7 +210,8 @@ _zshrinkwrap_start_timer() {
 
   (( _zshrinkwrap_timer_fd >= 0 )) && return 0
   exec {_zshrinkwrap_timer_fd}< <(command sleep "$delay")
-  zle -F $_zshrinkwrap_timer_fd _zshrinkwrap_timer_ready
+  # As a widget the handler sees live zle state, such as region_highlight.
+  zle -F -w $_zshrinkwrap_timer_fd _zshrinkwrap_timer_ready
 }
 
 TRAPWINCH() {
@@ -281,9 +288,21 @@ _zshrinkwrap_split_precmd() {
   _zshrinkwrap_strategy
   [[ $REPLY == split ]] || return 0
 
-  # A theme that rebuilt PROMPT since last time wins over the saved copy.
+  # A theme that rebuilt a prompt since last time wins over the saved copy.
   if [[ -z $_zshrinkwrap_split_set || $PROMPT != $_zshrinkwrap_split_set ]]; then
     _zshrinkwrap_split_orig=$PROMPT
+  fi
+  if [[ -z $_zshrinkwrap_rprompt_set || $RPROMPT != $_zshrinkwrap_rprompt_set ]]; then
+    _zshrinkwrap_rprompt_orig=$RPROMPT
+  fi
+
+  # Zsh reaches the right prompt with a cursor move that stops at the edge,
+  # but its text autowraps if the terminal already shrank, dropping the
+  # cursor a row. With autowrap off it overwrites the last column instead.
+  _zshrinkwrap_rprompt_set=
+  if [[ -n $_zshrinkwrap_rprompt_orig ]]; then
+    _zshrinkwrap_rprompt_set=$'%{\e[?7l%}'$_zshrinkwrap_rprompt_orig$'%{\e[?7h%}'
+    RPROMPT=$_zshrinkwrap_rprompt_set
   fi
   _zshrinkwrap_split_print
 }
@@ -292,6 +311,9 @@ _zshrinkwrap_split_precmd() {
 _zshrinkwrap_split_preexec() {
   if [[ -n $_zshrinkwrap_split_set && $PROMPT == $_zshrinkwrap_split_set ]]; then
     PROMPT=$_zshrinkwrap_split_orig
+  fi
+  if [[ -n $_zshrinkwrap_rprompt_set && $RPROMPT == $_zshrinkwrap_rprompt_set ]]; then
+    RPROMPT=$_zshrinkwrap_rprompt_orig
   fi
   return 0
 }
@@ -318,6 +340,7 @@ _zshrinkwrap_split_redraw() {
 }
 
 autoload -Uz add-zsh-hook
+zle -N _zshrinkwrap_timer_ready
 add-zsh-hook precmd _zshrinkwrap_restore
 add-zsh-hook precmd _zshrinkwrap_split_precmd
 add-zsh-hook preexec _zshrinkwrap_split_preexec
