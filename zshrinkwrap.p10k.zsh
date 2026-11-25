@@ -48,9 +48,11 @@ _zshrinkwrap_p10k_show() {
   _zshrinkwrap_p10k_hidden=0
 }
 
-# Expand p10k's upper lines as zle would draw them right now.
+# Expand p10k's upper lines as zle would draw them right now. p10k's template
+# needs prompt_subst, which p10k's own functions, its async callbacks among
+# them, turn off with `emulate -L zsh -o no_prompt_subst`.
 _zshrinkwrap_p10k_upper_text() {
-  setopt local_options no_sh_glob no_ksh_glob
+  setopt local_options no_sh_glob no_ksh_glob prompt_subst
   local full
   _zshrinkwrap_p10k_show
   full=${(%%)PROMPT}
@@ -112,6 +114,7 @@ _zshrinkwrap_p10k_line_init() {
 # Rows of printed upper lines at the current width, and rows of the input
 # line above the cursor for the given prompt.
 _zshrinkwrap_p10k_rows() {
+  setopt local_options prompt_subst
   local prompt=$1
   local -i len upper=0 above=0
   for len in $_zshrinkwrap_upper_widths; do
@@ -133,21 +136,35 @@ _zshrinkwrap_p10k_after_reset() {
 _zshrinkwrap_p10k_repaint() {
   (( _zshrinkwrap_p10k_hidden && ! _zshrinkwrap_active )) || return 0
   local old=$_zshrinkwrap_p10k_printed new line
-  local -a widths=( $_zshrinkwrap_upper_widths )
+  local -i width
+  local -a widths=( $_zshrinkwrap_upper_widths ) lines new_widths
   _zshrinkwrap_p10k_upper_text
   new=$REPLY
   _zshrinkwrap_p10k_hide
-  [[ $new == $old ]] && return 0
-  (( ${#${(@f)new}} == $#widths )) || return 0
+  [[ $new == $old || -z $new ]] && return 0
+  # Count lines through an array: a nested ${#${(@f)new}} of a single line is
+  # a scalar, so it measures characters and the common one-line case never matched.
+  lines=( "${(@f)new}" )
+  (( $#lines == $#widths )) || return 0
+  for line in "${lines[@]}"; do
+    _zshrinkwrap_display_width $line
+    new_widths+=( $REPLY )
+  done
+  # A line wider than the terminal wraps onto rows this in-place redraw does
+  # not clear, so leave it as printed.
+  for width in $widths $new_widths; do
+    (( width <= COLUMNS )) || return 0
+  done
   _zshrinkwrap_p10k_rows $PROMPT
   local -i up=$(( reply[1] + reply[2] ))
   (( up > 0 && up < LINES )) || return 0
   print -rn -- $'\e7\e['$up$'A\r'
-  for line in "${(@f)new}"; do
+  for line in "${lines[@]}"; do
     print -rn -- $'\e[K'$line$'\r\n'
   done
   print -rn -- $'\e8'
   typeset -g _zshrinkwrap_p10k_printed=$new
+  _zshrinkwrap_upper_widths=( $new_widths )
 }
 
 # The transient prompt redraws only the input line; delete the printed upper
