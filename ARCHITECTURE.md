@@ -185,7 +185,12 @@ and works through p10k instead:
   Whether zle has drawn yet at that point varies with the user's other plugins,
   but the cursor is on the input line either way.
 - **Async updates.** `_p9k_reset_prompt` is wrapped to repaint the upper lines
-  in place, between DECSC and DECRC, when their expansion changed.
+  in place, between DECSC and DECRC, when their expansion changed. p10k calls it
+  from its async callbacks, which run with `no_prompt_subst`, so every
+  expansion of p10k's template sets `prompt_subst` locally; without it the
+  repaint saw the raw template and never drew. A line wider than the terminal
+  is left as printed, because redrawing it in place would not clear the row it
+  wraps onto.
 - **Transient prompt.** `_p9k_on_widget_zle-line-finish` is wrapped. When p10k
   applies its transient prompt, the plugin deletes the upper rows with DL
   (`\e[<n>M`) and moves the cursor up with the content.

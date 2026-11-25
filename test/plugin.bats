@@ -811,6 +811,63 @@ setup() {
   [ "$output" = "0337033[1A\\r033[1M0338033[1A" ]
 }
 
+@test "p10k upper lines expand under an async callback without prompt_subst" {
+  run zsh -fc '
+    source "$PLUGIN_PATH"
+    source "${PLUGIN_PATH:h}/zshrinkwrap.p10k.zsh"
+    setopt prompt_subst
+    _p9k_line_segments_left=( a b )
+    nl=$'"'"'\n'"'"'
+    PROMPT='"'"'${_p9k__1-top${nl}}${_p9k__2-> }'"'"'
+
+    # p10k runs its async callbacks with prompt_subst off.
+    () { emulate -L zsh -o no_prompt_subst; _zshrinkwrap_p10k_upper_text }
+    [[ $REPLY == top ]] || { print -r -- "upper=${(q+)REPLY}"; exit 1 }
+  '
+
+  [ "$status" -eq 0 ]
+}
+
+@test "p10k async update repaints a single upper line in place" {
+  run zsh -fc '
+    source "$PLUGIN_PATH"
+    source "${PLUGIN_PATH:h}/zshrinkwrap.p10k.zsh"
+    setopt prompt_subst
+    COLUMNS=80; LINES=24; CURSOR=0
+    _p9k_line_segments_left=( a b )
+    nl=$'"'"'\n'"'"'
+    top=old
+    PROMPT='"'"'${_p9k__1-${top}${nl}}${_p9k__2-> }'"'"'
+    _zshrinkwrap_p10k_print >/dev/null
+
+    top=new
+    () { emulate -L zsh -o no_prompt_subst; _zshrinkwrap_p10k_repaint } | od -An -c | tr -d " \n"
+  '
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "0337033[1A\\r033[Knew\\r\\n0338" ]
+}
+
+@test "p10k async update leaves an upper line wider than the terminal" {
+  run zsh -fc '
+    source "$PLUGIN_PATH"
+    source "${PLUGIN_PATH:h}/zshrinkwrap.p10k.zsh"
+    setopt prompt_subst
+    COLUMNS=2; LINES=24; CURSOR=0
+    _p9k_line_segments_left=( a b )
+    nl=$'"'"'\n'"'"'
+    top=old
+    PROMPT='"'"'${_p9k__1-${top}${nl}}${_p9k__2-> }'"'"'
+    _zshrinkwrap_p10k_print >/dev/null
+
+    top=new
+    () { emulate -L zsh -o no_prompt_subst; _zshrinkwrap_p10k_repaint }
+  '
+
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
 @test "restore cancels a pending timer" {
   run zsh -fc '
     source "$PLUGIN_PATH"
